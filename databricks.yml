@@ -1,0 +1,248 @@
+# ==============================================================================
+# 🚀 FLEET MONITORING E2E PIPELINE (MEDALLION ARCHITECTURE)
+# ==============================================================================
+# This bundle manages the deployment of the full data pipeline from 
+# mock data generation to Gold layer enrichment.
+# ==============================================================================
+
+bundle:
+  name: fleet-monitoring-pipeline
+
+# --- VARIABLES CONFIGURATION ---
+# Centralized variables for catalogs, schemas, and volumes.
+# These act as the single source of truth for the Medallion infrastructure.
+variables:
+  spn_id:
+    description: "Client ID of the Service Principal (Injected via CI/CD)"
+  
+  # --- Watches Configuration (Wearables) ---
+  watches_catalog:
+    default: "wearables_dev"
+  watches_metadata_schema:
+    default: "metadata"
+  watches_checkpoint_volume:
+    default: "checkpoints"
+  watches_bronze_schema:
+    default: "bronze"
+  watches_bronze_volume:
+    default: "raw_files"
+  watches_bronze_table:
+    default: "watches_raw"
+  watches_silver_schema:
+    default: "silver"
+  watches_silver_table:
+    default: "watches_clean"
+
+  # --- Trackers Configuration (Fleet GPS) ---
+  trackers_catalog:
+    default: "trackers_dev"
+  trackers_metadata_schema:
+    default: "metadata"
+  trackers_checkpoint_volume:
+    default: "checkpoints"
+  trackers_bronze_schema:
+    default: "bronze"
+  trackers_bronze_volume:
+    default: "raw_files"
+  trackers_bronze_table:
+    default: "trackers_raw"
+  trackers_silver_schema:
+    default: "silver"
+  trackers_silver_table:
+    default: "trackers_clean"
+
+  # --- Gold Layer Configuration (Operations & Analytics) ---
+  gold_catalog:
+    default: "fleet_dev"
+  gold_schema:
+    default: "operations"
+  gold_live_table:
+    default: "fleet_live_status"
+  gold_metrics_table:
+    default: "driver_safety_metrics"
+  gold_alerts_table:
+    default: "fleet_safety_alerts"
+  gold_metadata_schema:
+    default: "metadata"
+  gold_checkpoint_volume:
+    default: "checkpoints"
+
+# --- TARGET ENVIRONMENTS ---
+targets: 
+  dev:
+    workspace:
+      # host: ${DATABRICKS_HOST} # Usually set via environment variables in CI/CD
+    run_as:
+      service_principal_name: ${var.spn_id}
+
+# --- RESOURCES (JOBS & WORKFLOWS) ---
+resources:
+  jobs:
+    fleet_monitoring_job:
+      name: "Fleet Monitoring: Unified Medallion Pipeline"
+
+      queue:
+        enabled: true
+
+      tasks:
+        # ----------------------------------------------------------------------
+        # 🚀 STEP 0: MOCK DATA GENERATION (Parallel Execution)
+        # ----------------------------------------------------------------------
+        # These tasks simulate real-time data ingestion into S3/Data Lake.
+        # We use CLI 'parameters' to pass configuration to the Python scripts.
+        # ----------------------------------------------------------------------
+        
+        - task_key: "generate_mock_trackers"
+          environment_key: "fleet_runtime"
+          spark_python_task:
+            python_file: ./src/mock_generator/producer_trackers.py
+            parameters:
+              #- "--bucket"
+              #- "dbx-data-lake-bucket"
+              - "--folder"
+              - "landing-zone/trackers"
+              - "--batches"
+              - "5"
+              - "--interval"
+              - "120"
+              - "--local-dir"
+              - "data/temp/trackers"
+              - "--volume-path"
+              - "/Volumes/${var.trackers_catalog}/${var.trackers_bronze_schema}/${var.trackers_bronze_volume}"
+
+        - task_key: "generate_mock_watches"
+          environment_key: "fleet_runtime"
+          spark_python_task:
+            python_file: ./src/mock_generator/producer_watches.py
+            parameters:
+              #- "--bucket"
+              #- "dbx-data-lake-bucket"
+              - "--folder"
+              - "landing-zone/watches"
+              - "--batches"
+              - "5"
+              - "--interval"
+              - "120"
+              - "--local-dir"
+              - "data/temp/watches"
+              - "--volume-path"
+              - "/Volumes/${var.watches_catalog}/${var.watches_bronze_schema}/${var.watches_bronze_volume}"
+
+        # ----------------------------------------------------------------------
+        # STAGE 1: BRONZE INGESTION (Parallel)
+        # ----------------------------------------------------------------------
+        # Auto-loader tasks to ingest raw files into Delta Bronze tables.
+        # ----------------------------------------------------------------------
+
+        - task_key: "bronze_trackers"
+          depends_on:
+            - task_key: "generate_mock_trackers"
+          environment_key: "fleet_runtime"
+          notebook_task:
+            notebook_path: ./notebooks/bronze/bronze_trackers.py
+            base_parameters:
+              TRACKERS_CATALOG: ${var.trackers_catalog}
+              TRACKERS_BRONZE_SCHEMA: ${var.trackers_bronze_schema}
+              TRACKERS_BRONZE_VOLUME: ${var.trackers_bronze_volume}
+              TRACKERS_BRONZE_TABLE: ${var.trackers_bronze_table}
+              TRACKERS_METADATA_SCHEMA: ${var.trackers_metadata_schema}
+              TRACKERS_CHECKPOINT_VOLUME: ${var.trackers_checkpoint_volume}
+
+        - task_key: "bronze_watches"
+          depends_on:
+            - task_key: "generate_mock_watches"
+          environment_key: "fleet_runtime"
+          notebook_task:
+            notebook_path: ./notebooks/bronze/bronze_watches.py
+            base_parameters:
+              WATCHES_CATALOG: ${var.watches_catalog}
+              WATCHES_BRONZE_SCHEMA: ${var.watches_bronze_schema}
+              WATCHES_BRONZE_VOLUME: ${var.watches_bronze_volume}
+              WATCHES_BRONZE_TABLE: ${var.watches_bronze_table}
+              WATCHES_METADATA_SCHEMA: ${var.watches_metadata_schema}
+              WATCHES_CHECKPOINT_VOLUME: ${var.watches_checkpoint_volume}
+
+        # ----------------------------------------------------------------------
+        # STAGE 2: SILVER TRANSFORMATION (Parallel)
+        # ----------------------------------------------------------------------
+        # Cleaning, Deduplication, and Schema Enforcement.
+        # ----------------------------------------------------------------------
+
+        - task_key: "silver_trackers"
+          depends_on:
+            - task_key: "bronze_trackers"
+          environment_key: "fleet_runtime"
+          notebook_task:
+            notebook_path: ./notebooks/silver/silver_trackers.py
+            base_parameters:
+              TRACKERS_CATALOG: ${var.trackers_catalog}
+              TRACKERS_BRONZE_SCHEMA: ${var.trackers_bronze_schema}
+              TRACKERS_BRONZE_TABLE: ${var.trackers_bronze_table}
+              TRACKERS_SILVER_SCHEMA: ${var.trackers_silver_schema}
+              TRACKERS_SILVER_TABLE: ${var.trackers_silver_table}
+              TRACKERS_METADATA_SCHEMA: ${var.trackers_metadata_schema}
+              TRACKERS_CHECKPOINT_VOLUME: ${var.trackers_checkpoint_volume}
+
+        - task_key: "silver_watches"
+          depends_on:
+            - task_key: "bronze_watches"
+          environment_key: "fleet_runtime"
+          notebook_task:
+            notebook_path: ./notebooks/silver/silver_watches.py
+            base_parameters:
+              WATCHES_CATALOG: ${var.watches_catalog}
+              WATCHES_BRONZE_SCHEMA: ${var.watches_bronze_schema}
+              WATCHES_BRONZE_TABLE: ${var.watches_bronze_table}
+              WATCHES_SILVER_SCHEMA: ${var.watches_silver_schema}
+              WATCHES_SILVER_TABLE: ${var.watches_silver_table}
+              WATCHES_METADATA_SCHEMA: ${var.watches_metadata_schema}
+              WATCHES_CHECKPOINT_VOLUME: ${var.watches_checkpoint_volume}
+
+        # ----------------------------------------------------------------------
+        # STAGE 3: GOLD ENRICHMENT (Final Join & Business Metrics)
+        # ----------------------------------------------------------------------
+        # Joining Trackers and Watches to calculate safety metrics.
+        # ----------------------------------------------------------------------
+
+        - task_key: "gold_fleet_enrichment"
+          depends_on:
+            - task_key: "silver_trackers"
+            - task_key: "silver_watches"
+          environment_key: "fleet_runtime"
+          notebook_task:
+            notebook_path: ./notebooks/gold/gold_fleet_monitoring_enrichment.py
+            base_parameters:
+              # Target Gold Metadata
+              GOLD_CATALOG: ${var.gold_catalog}
+              GOLD_SCHEMA: ${var.gold_schema}
+              GOLD_METADATA_SCHEMA: ${var.gold_metadata_schema}
+              GOLD_CHECKPOINT_VOLUME: ${var.gold_checkpoint_volume}
+              GOLD_LIVE_TABLE: ${var.gold_live_table}
+              GOLD_METRICS_TABLE: ${var.gold_metrics_table}
+              GOLD_ALERTS_TABLE: ${var.gold_alerts_table}
+              # Source Silver Metadata (for dynamic SQL joining)
+              WATCHES_CATALOG: ${var.watches_catalog}
+              WATCHES_SILVER_SCHEMA: ${var.watches_silver_schema}
+              WATCHES_SILVER_TABLE: ${var.watches_silver_table}
+              TRACKERS_CATALOG: ${var.trackers_catalog}
+              TRACKERS_SILVER_SCHEMA: ${var.trackers_silver_schema}
+              TRACKERS_SILVER_TABLE: ${var.trackers_silver_table}
+
+      # --- SHARED ENVIRONMENT ---
+      # Definitions of the compute/runtime environment used by the tasks.
+      environments:
+        - environment_key: "fleet_runtime"
+          spec:
+            environment_version: "2"
+
+# --- SYNC SETTINGS ---
+# Defines which files are uploaded to the Databricks Workspace during 'bundle deploy'.
+sync:
+  include:
+    - notebooks/**
+    - src/**
+  exclude:
+    - terraform/**
+    - .env
+    - "**/__pycache__/**"
+    - "*.md"
