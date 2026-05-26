@@ -1,0 +1,140 @@
+name: "Deploy Fleet Monitoring Pipeline"
+
+# --- 🚀 TRIGGER CONFIGURATION ---
+on:
+  push:
+    branches: [ main ]
+    # Only trigger if changes occur within this specific project folder
+    paths:
+      - 'terraform/**'
+      - 'notebooks/**'
+      - 'src/**'
+      - 'databricks.yml'
+      - 'requirements.txt'
+      - '*.sh'
+  
+  # Allows manual triggering from the GitHub Actions tab
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # --- 🏗️ JOB 1: INFRASTRUCTURE DEPLOYMENT (TERRAFORM) ---
+  infrastructure:
+    name: "1. Terraform Deployment"
+    runs-on: ubuntu-latest
+
+    # Define outputs to pass data (like the new SPN ID) to subsequent jobs
+    outputs:
+      project_spn_id: ${{ steps.get_outputs.outputs.SPN_ID }}
+    
+    # Set default working directory to the specific project folder
+    # defaults:
+    #   run:
+    #     working-directory: .
+
+    # Load required credentials from GitHub Secrets into Environment Variables
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
+      # Mapping Admin Secrets to Terraform-recognized variables (TF_VAR_ prefix)
+      TF_VAR_databricks_account_id: ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+      TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_ADMIN_CLIENT_ID }}
+      TF_VAR_databricks_client_secret: ${{ secrets.DATABRICKS_ADMIN_CLIENT_SECRET }}
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+
+    steps:
+      - name: "Checkout Repository"
+        uses: actions/checkout@v4
+
+      - name: "Setup Terraform Engine"
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: "Execute Terraform Layers"
+        working-directory: .
+        run: |
+
+          # Ensure the automation script is executable
+          chmod +x terraform.sh
+          
+          # Deploy all three infrastructure layers sequentially
+          ./terraform.sh 01_infra apply
+          ./terraform.sh 02_workspace apply
+          ./terraform.sh 03_unity_catalog apply
+
+      - name: "Extract Generated Project SPN ID"
+        id: get_outputs
+        working-directory: .
+        run: |
+
+          echo "The output file is located at: $GITHUB_OUTPUT"
+
+          # Fetch the ID and remove any hidden characters
+          #ID=$(terraform output -raw spn_application_id | tr -d '\n' | tr -d '\r')
+          ID=$(terraform -chdir=terraform/01_infra output -raw spn_application_id | tr -d '[:space:]')
+
+          if [ -z "$ID" ]; then
+            echo "❌ ERROR: Could not fetch SPN ID" 
+            exit 1
+          fi
+          
+          # Print the values to the console for debugging purposes
+          echo "Extracted SPN: $ID"
+          
+          # Important: Use the absolute path to GITHUB_OUTPUT to bypass working-directory issues
+          echo "SPN_ID=$ID" >> "$GITHUB_OUTPUT"
+
+          # echo "--- DEBUG: Contents of GITHUB_OUTPUT file ---"
+          # cat "$GITHUB_OUTPUT"
+          # echo "--- END OF DEBUG ---"
+      
+      - name: "Final Job Output Validation"
+        run: |
+          echo "Checking Job Outputs context..."
+          echo "Value of steps.get_outputs.outputs.SPN_ID: ${{ steps.get_outputs.outputs.SPN_ID }}"
+
+
+  # --- 📦 JOB 2: DATABRICKS ASSET BUNDLE DEPLOY ---
+  deploy_bundle:
+    name: "2. Databricks Asset Bundle Deploy"
+    # This job only runs if the 'infrastructure' job completes successfully
+    needs: infrastructure
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: .
+
+    steps:
+      - name: "Checkout Repository"
+        uses: actions/checkout@v4
+
+      - name: "Setup Databricks CLI"
+        uses: databricks/setup-cli@main
+
+      # - name: "Manual Check of Job 1 Outputs"
+      #   run: |
+      #     echo "SPN ID: ${{ needs.infrastructure.outputs.project_spn_id }}"
+
+      - name: "Deploy Bundle via Hybrid Script"
+        env:
+          # Inject the SPN ID from the Infrastructure Job into the environment
+          # The bundle.sh script will detect this and skip local Terraform fetching
+          SPN_ID: ${{ needs.infrastructure.outputs.project_spn_id }}
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          
+          # Use Admin credentials for the deployment process itself
+          DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_ADMIN_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_ADMIN_CLIENT_SECRET }}
+        run: |
+
+          # Ensure the bundle orchestration script is executable
+          chmod +x bundle.sh
+          
+          # Run the bundle deployment
+          # This automatically handles variable-overrides.json creation
+          ./bundle.sh deploy
