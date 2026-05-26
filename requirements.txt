@@ -1,0 +1,15 @@
+# === ☁️ Cloud & Databricks SDKs ===
+databricks-sdk
+databricks-cli
+awscli
+
+# === 🛠️ Code Quality, Formatting & Testing ===
+black
+ruff
+pytest
+
+# === 🔌 Databricks Remote Connection ===
+databricks-connect==18.0.0
+
+# === ⚙️ Utilities & Configuration ===
+python-dotenv

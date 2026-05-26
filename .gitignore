@@ -1,0 +1,42 @@
+# ==========================================
+# 🐍 Python & Virtual Environments
+# ==========================================
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+
+# ==========================================
+# ☁️ Terraform (Local State & Credentials)
+# ==========================================
+# Local .terraform directory containing downloaded providers
+**/.terraform/
+
+# State files (contain sensitive cloud data and IPs!)
+*.tfstate
+*.tfstate.backup
+*.tfstate.lock.info
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Terraform variables (if you use them locally)
+*.tfvars
+*.tfvars.json
+
+# ==========================================
+# 🏗️ Databricks Asset Bundles (DABs)
+# ==========================================
+.databricks/
+active_bundle.json
+
+# ==========================================
+# 🖥️ OS & IDE Settings
+# ==========================================
+.DS_Store
+.vscode/
+.idea/
+*.log
+
