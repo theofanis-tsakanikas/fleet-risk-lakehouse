@@ -105,22 +105,43 @@ logger.info(f"Context locked to {gold_catalog}. Ready for JOIN.")
 
 spark.sql(f"""
 CREATE OR REPLACE TEMPORARY VIEW fleet_enriched_view AS
-SELECT 
-    t.driver_id, 
-    t.truck_id, 
+SELECT
+    t.driver_id,
+    t.truck_id,
     t.event_timestamp as timestamp,
-    t.latitude, 
-    t.longitude, 
-    t.speed, 
+    t.latitude,
+    t.longitude,
+    t.speed,
     t.fuel_level,
-    w.heart_rate, 
-    w.stress_score
+    w.heart_rate,
+    w.stress_score,
+    ROUND(
+        LEAST(100.0,
+            (COALESCE(t.speed, 0)        / 120.0 * 40) +
+            (COALESCE(w.stress_score, 0) / 100.0 * 35) +
+            (COALESCE(w.heart_rate, 0)   / 110.0 * 25)
+        ), 2
+    ) AS risk_score
 FROM {t_silver_path} t
-INNER JOIN {w_silver_path} w 
-    ON t.driver_id = w.user_id 
-    AND t.event_timestamp BETWEEN w.event_timestamp - INTERVAL 60 SECONDS 
+INNER JOIN {w_silver_path} w
+    ON t.driver_id = w.user_id
+    AND t.event_timestamp BETWEEN w.event_timestamp - INTERVAL 60 SECONDS
                           AND w.event_timestamp + INTERVAL 60 SECONDS
 """)
+
+# COMMAND ----------
+# --- DATA QUALITY: enriched view must not be empty ---
+# An INNER JOIN with zero matches means the ±60s window found no correlated events.
+# This is always a pipeline problem (timestamp skew, empty Silver tables) — not a
+# valid business state — so we raise immediately rather than silently writing empty tables.
+view_count = spark.sql("SELECT COUNT(*) AS cnt FROM fleet_enriched_view").collect()[0]["cnt"]
+if view_count == 0:
+    raise ValueError(
+        "Gold DQ FAILED: fleet_enriched_view has 0 rows. "
+        "Verify that both Silver tables contain records with overlapping event_timestamp "
+        "ranges within the 60-second join window."
+    )
+logger.info(f"DQ passed: fleet_enriched_view contains {view_count:,} rows.")
 
 # COMMAND ----------
 # MAGIC %md
@@ -131,6 +152,7 @@ INNER JOIN {w_silver_path} w
 logger.info(f"Updating Gold Tables in {gold_catalog}.{gold_schema}...")
 
 # Table 1: Live Status (Latest record per driver)
+# risk_score flows through from fleet_enriched_view via SELECT * EXCEPT(rn).
 spark.sql(f"""
 CREATE OR REPLACE TABLE {live_status_table} AS
 SELECT * EXCEPT(rn) FROM (
@@ -139,30 +161,66 @@ SELECT * EXCEPT(rn) FROM (
 ) WHERE rn = 1
 """)
 
+# --- DATA QUALITY: fleet_live_status ---
+null_keys = spark.sql(f"""
+    SELECT COUNT(*) AS cnt FROM {live_status_table}
+    WHERE driver_id IS NULL OR timestamp IS NULL
+""").collect()[0]["cnt"]
+if null_keys > 0:
+    raise ValueError(
+        f"Gold DQ FAILED: {live_status_table} has {null_keys} row(s) with NULL driver_id or timestamp."
+    )
+logger.info(f"DQ passed: no NULL key columns in {live_status_table}.")
+
+out_of_range = spark.sql(f"""
+    SELECT COUNT(*) AS cnt FROM {live_status_table}
+    WHERE risk_score IS NULL OR risk_score < 0 OR risk_score > 100
+""").collect()[0]["cnt"]
+if out_of_range > 0:
+    raise ValueError(
+        f"Gold DQ FAILED: {live_status_table} has {out_of_range} row(s) with risk_score "
+        f"outside [0.0, 100.0] or NULL. Check COALESCE handling in the enriched view formula."
+    )
+logger.info(f"DQ passed: all risk_score values in {live_status_table} are within [0.0, 100.0].")
+
 # Table 2: Hourly Safety Metrics (Aggregated)
 spark.sql(f"""
 CREATE OR REPLACE TABLE {safety_metrics_table} AS
-SELECT 
+SELECT
     driver_id,
     CAST(window(timestamp, "1 hour").start AS TIMESTAMP) as hour_bucket,
     ROUND(AVG(heart_rate), 2) as avg_heart_rate,
     MAX(speed) as max_speed,
-    ROUND(AVG(stress_score), 2) as avg_stress
+    ROUND(AVG(stress_score), 2) as avg_stress,
+    ROUND(AVG(risk_score), 2) as avg_risk_score,
+    MAX(risk_score) as max_risk_score
 FROM fleet_enriched_view
 GROUP BY driver_id, hour_bucket
 ORDER BY driver_id ASC, hour_bucket DESC
 """)
 
+# --- DATA QUALITY: driver_safety_metrics ---
+metrics_count = spark.sql(f"SELECT COUNT(*) AS cnt FROM {safety_metrics_table}").collect()[0]["cnt"]
+if metrics_count == 0:
+    raise ValueError(
+        f"Gold DQ FAILED: {safety_metrics_table} has 0 rows. "
+        f"Unexpected given enriched view passed the non-empty check."
+    )
+logger.info(f"DQ passed: {safety_metrics_table} contains {metrics_count:,} rows.")
+
 # Table 3: Safety Alerts (Historical Log)
+# risk_score is included so Grafana alert panels can threshold on a single numeric column.
 spark.sql(f"""
 CREATE OR REPLACE TABLE {safety_alerts_table} AS
-SELECT 
-    timestamp, 
-    driver_id, 
-    truck_id, 
-    speed, 
+SELECT
+    timestamp,
+    driver_id,
+    truck_id,
+    speed,
     heart_rate,
-    CASE 
+    stress_score,
+    risk_score,
+    CASE
         WHEN speed > 90 AND heart_rate > 90 THEN 'CRITICAL: High Speed & Stress'
         WHEN heart_rate > 110 THEN 'DANGER: Extreme Heart Rate'
         WHEN heart_rate > 90 THEN 'WARNING: Elevated Heart Rate'
