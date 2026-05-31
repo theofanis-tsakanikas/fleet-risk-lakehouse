@@ -5,10 +5,48 @@
 
 ![project_cover_with_title](./images/project_cover_with_title.png)
 
+[![CI](https://github.com/theofanis-tsakanikas/databricks-fleet-dabs-orchestration/actions/workflows/deploy-fleet-pipeline.yml/badge.svg)](https://github.com/theofanis-tsakanikas/databricks-fleet-dabs-orchestration/actions/workflows/deploy-fleet-pipeline.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![Databricks](https://img.shields.io/badge/Databricks-FF3621?logo=databricks&logoColor=white)](https://www.databricks.com/)
+[![AWS](https://img.shields.io/badge/AWS-232F3E?logo=amazonwebservices&logoColor=white)](https://aws.amazon.com/)
+[![Terraform](https://img.shields.io/badge/Terraform-7B42BC?logo=terraform&logoColor=white)](https://www.terraform.io/)
+[![Apache Spark](https://img.shields.io/badge/Apache%20Spark-E25A1C?logo=apachespark&logoColor=white)](https://spark.apache.org/)
+[![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+
+> An end-to-end, Infrastructure-as-Code data lakehouse that correlates real-time vehicle telemetry with driver biometrics to score fleet safety risk in near real time.
+
+## 📑 Table of Contents
+
+- [Strategic Overview](#-strategic-overview)
+- [What This Project Demonstrates](#-what-this-project-demonstrates)
+- [System Architecture & Technical Stack](#-system-architecture--technical-stack)
+- [Project Blueprint](#-project-blueprint)
+- [The Medallion Journey (Data Engineering Deep-Dive)](#-the-medallion-journey-data-engineering-deep-dive)
+- [Executive Observability](#-executive-observability)
+- [DevOps & Infrastructure as Code](#-devops--infrastructure-as-code)
+- [Operational Guide (Local Deployment & Lifecycle)](#-operational-guide-local-deployment--lifecycle)
+- [Future Roadmap & Scalability](#-future-roadmap--scalability)
+- [Conclusion](#-conclusion)
+
+> 📘 For an engineering-focused reference (environment variables, layer apply order, gotchas), see [CLAUDE.md](./CLAUDE.md). For design rationale, see the [Architecture Decision Records](./docs/adr/).
+
 ## 🎯 Strategic Overview
 This project delivers a production-ready **Data Lakehouse** engineered for the high-stakes logistics industry. By correlating **Real-Time Vehicle Telemetry** (GPS, Speed) with **Driver Biometrics** (Heart Rate, Stress), the platform transitions from reactive monitoring to **proactive risk prevention**.
 
 The entire ecosystem is governed by **Infrastructure as Code (IaC)**, ensuring that every cloud resource, security policy, and data pipeline is version-controlled, repeatable, and audit-ready.
+
+---
+
+## ✅ What This Project Demonstrates
+
+This repository is a portfolio piece showcasing production-grade data and platform engineering practices end to end:
+
+* **Layered Infrastructure as Code** — three isolated Terraform layers (foundation, workspace, governance) with per-layer remote state and automated secret injection. See [ADR-001](./docs/adr/ADR-001-terraform-layered-state.md).
+* **Medallion data architecture** — Bronze (Auto Loader ingestion) → Silver (cleansing, deduplication) → Gold (temporal join, risk scoring) on Apache Spark Structured Streaming.
+* **Asynchronous stream correlation** — a 60-second temporal join window to align independent telemetry and biometric streams. See [ADR-002](./docs/adr/ADR-002-temporal-join-window.md).
+* **Business-ready analytics** — a derived `risk_score` and inline data-quality assertions guarding every Gold table.
+* **CI/CD automation** — GitHub Actions for full `apply` on merge and sticky Terraform `plan` comments on pull requests.
+* **Governance & observability** — Unity Catalog fine-grained access control and Grafana dashboards backed by a serverless SQL Warehouse. See [ADR-003](./docs/adr/ADR-003-sql-warehouse-grafana.md).
 
 ---
 

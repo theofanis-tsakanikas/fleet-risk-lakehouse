@@ -1,3 +1,20 @@
+"""Smartwatch / wearable IoT mock data generator.
+
+Simulates driver biometrics (heart rate, steps, battery level, stress score) for the
+drivers defined in ``fleet_config.json`` and writes them as JSON Lines batches. Each
+batch is delivered either to a Databricks Unity Catalog Volume (when ``--volume-path``
+is provided) or uploaded directly to S3 via Boto3.
+
+The generator intentionally injects malformed records (error IDs, null/sentinel heart
+rates, impossible outliers, duplicate events, and a randomly omitted stress score) so
+the downstream Silver layer's cleansing and deduplication rules can be exercised.
+Timestamps are synced to the start of the minute to align with the tracker generator
+for the Gold-layer temporal join.
+
+Configuration is resolved from CLI arguments with a fallback to environment
+variables, supporting both local development and Databricks job execution.
+"""
+
 import json
 import os
 import random
@@ -42,8 +59,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def parse_arguments():
-    """Parses command line arguments with fallback to environment variables."""
+def parse_arguments() -> argparse.Namespace:
+    """Parse command line arguments with fallback to environment variables.
+
+    Returns:
+        The parsed arguments namespace (bucket, folder, batches, interval,
+        local_dir, volume_path).
+    """
     parser = argparse.ArgumentParser(description="Fleet Watch Data Generator")
     
     parser.add_argument(
@@ -100,8 +122,20 @@ except FileNotFoundError:
     logger.error(f"fleet_config.json not found at {config_path}")
     sys.exit(1)
 
-def generate_watch_event(driver_info, synced_time):
-    """Generates a single event synced to a specific timestamp."""
+def generate_watch_event(driver_info: dict, synced_time: datetime) -> dict:
+    """Generate a single watch biometric event synced to a specific timestamp.
+
+    Randomly injects malformed values (error watch IDs, unknown user, empty watch
+    ID, null/sentinel/outlier heart rates) and omits the stress score ~20% of the
+    time to simulate real-world wearable data quality issues.
+
+    Args:
+        driver_info: A driver/device mapping entry from ``fleet_config.json``.
+        synced_time: The UTC timestamp (truncated to the minute) for the event.
+
+    Returns:
+        A dict representing one watch biometric record with nested ``metrics``.
+    """
     id_roll = random.random()
     watch_id = driver_info["watch_id"]
     user_id = driver_info["driver_id"]
@@ -143,8 +177,16 @@ def generate_watch_event(driver_info, synced_time):
 
     return event
 
-def upload_to_s3(local_file_path, s3_key):
-    """Uploads a local file to S3 using Boto3."""
+def upload_to_s3(local_file_path: str, s3_key: str) -> bool:
+    """Upload a local file to S3 using Boto3.
+
+    Args:
+        local_file_path: Path to the local file to upload.
+        s3_key: Destination key (path) within the configured S3 bucket.
+
+    Returns:
+        ``True`` if the upload succeeded, ``False`` otherwise.
+    """
     s3_client = boto3.client('s3')
     try:
         s3_client.upload_file(local_file_path, BUCKET_NAME, s3_key)
@@ -154,8 +196,16 @@ def upload_to_s3(local_file_path, s3_key):
         logger.error(f"Failed to upload to S3: {e}")
         return False
 
-def save_and_push_batch(synced_time):
-    """Generates data, saves locally, then moves to Volume or S3."""
+def save_and_push_batch(synced_time: datetime) -> None:
+    """Generate a fleet-wide batch, write it to JSON Lines, and deliver it.
+
+    A duplicate event is appended ~20% of the time to exercise Silver-layer
+    deduplication. Delivery is to a Databricks UC Volume when ``--volume-path`` is
+    set, otherwise a direct S3 upload via Boto3.
+
+    Args:
+        synced_time: The UTC timestamp (truncated to the minute) for the batch.
+    """
     events = [generate_watch_event(driver, synced_time) for driver in fleet]
     
     # Inject duplicates for testing
