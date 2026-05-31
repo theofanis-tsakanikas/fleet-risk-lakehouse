@@ -83,7 +83,7 @@ jobs:
           } > plan-comment-01.md
 
       - name: "Post Sticky PR Comment"
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: plan-01-infra
           path: plan-comment-01.md
@@ -160,7 +160,7 @@ jobs:
           } > plan-comment-02.md
 
       - name: "Post Sticky PR Comment"
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: plan-02-workspace
           path: plan-comment-02.md
@@ -236,7 +236,7 @@ jobs:
           } > plan-comment-03.md
 
       - name: "Post Sticky PR Comment"
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: plan-03-unity-catalog
           path: plan-comment-03.md
