@@ -1,0 +1,17 @@
+# ==============================================================================
+# LOCAL test-suite dependencies (run with ZERO cloud infrastructure).
+#
+# Install into an isolated virtualenv — NOT the same env as requirements.txt,
+# which pins databricks-connect (that package shadows/conflicts with a plain
+# pyspark install). Local Spark tests need real pyspark instead.
+#
+#   python3 -m venv .venv
+#   .venv/bin/pip install -r requirements-dev.txt
+#   .venv/bin/python -m pytest
+#
+# REQUIRES: Java 17 (JDK) on PATH / JAVA_HOME for the local Spark session.
+# ==============================================================================
+
+pyspark==3.5.3
+pytest==8.3.4
+ruff==0.8.4

@@ -16,7 +16,6 @@ variables, supporting both local development and Databricks job execution.
 
 import csv
 import os
-import random
 import time
 import boto3
 import json
@@ -25,7 +24,11 @@ import argparse
 import logging
 import shutil
 from datetime import datetime, timezone
-from botocore.exceptions import NoCredentialsError
+
+# Pure event-generation logic, extracted into a side-effect-free module so it can
+# be unit-tested locally. Resolves because this script's directory is on sys.path
+# when run as a Databricks spark_python_task (and the bundle ships src/).
+from generators import generate_tracker_event
 
 # --- DIRECTORY CONFIGURATION ---
 # Use __file__ if available (standard Python), otherwise fallback to current working directory (Databricks)
@@ -114,65 +117,6 @@ try:
 except FileNotFoundError:
     logger.error(f"fleet_config.json not found at {config_path}")
     sys.exit(1)
-
-def generate_tracker_event(driver_info: dict, synced_time: datetime) -> dict:
-    """Generate a single tracker event synced to the same minute as watches.
-
-    Randomly injects malformed values (error truck IDs, unknown driver, empty
-    tracker ID, zeroed GPS coordinates, sentinel speeds, inconsistent status) to
-    simulate real-world sensor noise.
-
-    Args:
-        driver_info: A driver/device mapping entry from ``fleet_config.json``.
-        synced_time: The UTC timestamp (truncated to the minute) for the event.
-
-    Returns:
-        A dict representing one tracker telemetry record.
-    """
-    id_roll = random.random()
-    tracker_id = driver_info["tracker_id"]
-    truck_id = driver_info["truck_id"]
-    driver_id = driver_info["driver_id"]
-    
-    # ID Consistency & Error Logic
-    if id_roll < 0.04:
-        truck_id += "_ERR"
-    elif id_roll < 0.07:
-        driver_id = "DRV_999"
-    elif id_roll < 0.10:
-        tracker_id = ""
-        
-    # Coordinate Logic (Athens area defaults)
-    coord_roll = random.random()
-    if coord_roll < 0.05:
-        lat, lon = 0.0, 0.0
-    else:
-        lat = round(37.9838 + random.uniform(-0.1, 0.1), 6)
-        lon = round(23.7275 + random.uniform(-0.1, 0.1), 6)
-    
-    # Speed Logic
-    speed_roll = random.random()
-    if speed_roll < 0.05:
-        speed = -1
-    elif speed_roll < 0.10:
-        speed = 999
-    else:
-        speed = random.randint(60, 95)
-
-    status_options = ['Active', 'ACTIVE', 'MAINTENANCE', None]
-    status = random.choice(status_options)
-
-    return {
-        "tracker_id": tracker_id,
-        "truck_id": truck_id,
-        "driver_id": driver_id,
-        "latitude": lat,
-        "longitude": lon,
-        "speed": speed,
-        "fuel_level": random.randint(10, 100),
-        "status": status,
-        "event_timestamp": synced_time.isoformat()
-    }
 
 def upload_to_s3(local_file_path: str, s3_key: str) -> bool:
     """Upload a local file to S3 using Boto3.

@@ -1,0 +1,25 @@
+# ==============================================================================
+# Tooling config for the LOCAL test suite (pytest) and the linter (ruff).
+# This file configures dev tooling only; it does not declare a build system or
+# package the project.
+# ==============================================================================
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Make the extracted, infra-free modules importable without an install step.
+pythonpath = ["src", "src/mock_generator"]
+addopts = "-ra"
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+extend-exclude = [".venv", "terraform"]
+
+# Note: `select` is intentionally left at ruff's default set (E4/E7/E9/F) so this
+# config does not impose new import-sorting or line-length demands on the existing
+# notebooks via the project's pre-commit ruff hook.
+
+[tool.ruff.lint.per-file-ignores]
+# Notebooks are Databricks scripts: `spark`/`dbutils` are injected globals and
+# the `# COMMAND ----------` cell layout legitimately uses module-level code.
+"notebooks/**" = ["E402", "F821"]

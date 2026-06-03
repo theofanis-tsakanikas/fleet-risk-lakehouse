@@ -6,6 +6,7 @@
 ![project_cover_with_title](./images/project_cover_with_title.png)
 
 [![CI](https://github.com/theofanis-tsakanikas/databricks-fleet-dabs-orchestration/actions/workflows/deploy-fleet-pipeline.yml/badge.svg)](https://github.com/theofanis-tsakanikas/databricks-fleet-dabs-orchestration/actions/workflows/deploy-fleet-pipeline.yml)
+[![CI - Local Test Suite](https://github.com/theofanis-tsakanikas/databricks-fleet-dabs-orchestration/actions/workflows/ci.yml/badge.svg)](https://github.com/theofanis-tsakanikas/databricks-fleet-dabs-orchestration/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Databricks](https://img.shields.io/badge/Databricks-FF3621?logo=databricks&logoColor=white)](https://www.databricks.com/)
 [![AWS](https://img.shields.io/badge/AWS-232F3E?logo=amazonwebservices&logoColor=white)](https://aws.amazon.com/)
