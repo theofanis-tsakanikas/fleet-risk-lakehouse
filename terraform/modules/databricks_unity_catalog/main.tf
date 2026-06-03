@@ -15,7 +15,7 @@ resource "databricks_storage_credential" "datalake" {
 resource "databricks_external_location" "this" {
   for_each        = var.external_locations
   name            = each.key
-  url             = "s3://${var.data_bucket_id}/${each.value.path}/" 
+  url             = "s3://${var.data_bucket_id}/${each.value.path}/"
   credential_name = databricks_storage_credential.datalake.name
   comment         = each.value.comment
   force_destroy   = true
@@ -27,9 +27,9 @@ locals {
   ext_location_grants = flatten([
     for loc_name, loc_data in var.external_locations : [
       for principal, privileges in loc_data.grants : {
-        key       = "${loc_name}.${principal}"
-        location  = loc_name
-        principal = principal
+        key        = "${loc_name}.${principal}"
+        location   = loc_name
+        principal  = principal
         privileges = privileges
       }
     ]
@@ -66,9 +66,9 @@ locals {
   catalog_grants = flatten([
     for cat_name, cat_data in var.catalogs : [
       for principal, privileges in cat_data.grants : {
-        key       = "${cat_name}.${principal}"
-        catalog   = cat_name
-        principal = principal
+        key        = "${cat_name}.${principal}"
+        catalog    = cat_name
+        principal  = principal
         privileges = privileges
       }
     ]
@@ -120,9 +120,9 @@ locals {
   schema_grants = flatten([
     for s in local.schema_list : [
       for principal, privileges in s.grants : {
-        key       = "${s.key}.${principal}"
-        schema    = "${s.catalog_name}.${s.schema_name}"
-        principal = principal
+        key        = "${s.key}.${principal}"
+        schema     = "${s.catalog_name}.${s.schema_name}"
+        principal  = principal
         privileges = privileges
       }
     ]
@@ -155,7 +155,7 @@ locals {
         volume_name           = vol_name
         volume_type           = vol_data.volume_type
         external_location_key = vol_data.external_location_key
-        path                  = vol_data.path                  
+        path                  = vol_data.path
         comment               = vol_data.comment
         grants                = vol_data.grants
       }
@@ -175,7 +175,7 @@ resource "databricks_volume" "this" {
 
   # <--- FOR EXTERNAL VOLUMES --->
   storage_location = each.value.volume_type == "EXTERNAL" ? "${databricks_external_location.this[each.value.external_location_key].url}/${each.value.path}/" : null
-  depends_on = [databricks_schema.this]
+  depends_on       = [databricks_schema.this]
 }
 
 # --- 10. DYNAMIC VOLUME GRANTS ---
@@ -184,9 +184,9 @@ locals {
   volume_grants = flatten([
     for v in local.volume_list : [
       for principal, privileges in v.grants : {
-        key       = "${v.key}.${principal}"
-        volume    = "${v.catalog_name}.${v.schema_name}.${v.volume_name}"
-        principal = principal
+        key        = "${v.key}.${principal}"
+        volume     = "${v.catalog_name}.${v.schema_name}.${v.volume_name}"
+        principal  = principal
         privileges = privileges
       }
     ]

@@ -61,7 +61,7 @@ resource "databricks_access_control_rule_set" "spn_manage" {
       "groups/${databricks_group.admins.display_name}",
       "servicePrincipals/${databricks_service_principal.automation_sp.application_id}"
     ]
-    role       = "roles/servicePrincipal.user"
+    role = "roles/servicePrincipal.user"
   }
 }
 

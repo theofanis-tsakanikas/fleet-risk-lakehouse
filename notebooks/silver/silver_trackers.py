@@ -11,8 +11,6 @@ import os
 import logging
 import sys
 from databricks.connect import DatabricksSession
-from pyspark.sql import functions as F
-from pyspark.sql.types import TimestampType, IntegerType, DoubleType
 
 # --- DIRECTORY CONFIGURATION ---
 # Use __file__ if available (standard Python), otherwise fallback to current working directory (Databricks)
@@ -20,6 +18,15 @@ if "__file__" in locals() or "__file__" in globals():
     current_dir = os.path.dirname(os.path.abspath(__file__))
 else:
     current_dir = os.getcwd()
+
+# --- IMPORTABLE TRANSFORM LOGIC ---
+# The Silver cleansing logic lives in a pure, unit-tested module under src/.
+# The bundle ships src/ to the workspace; add it to sys.path so this notebook can
+# import it. A wrong path surfaces loudly as an ImportError on the first run.
+_SRC = os.path.abspath(os.path.join(current_dir, "..", "..", "src"))
+if _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
+from fleet_transforms.silver import transform_trackers_silver  # noqa: E402
 
 # --- HYBRID CONFIGURATION & LOCAL DEV SUPPORT ---
 # We use a try-except block for 'python-dotenv' for local development support.
@@ -102,60 +109,7 @@ df_bronze = spark.readStream.table(bronze_table)
 
 logger.info("Applying Silver cleaning rules for GPS, speed, and status...")
 
-df_silver = (df_bronze
-    # 1. Cast columns to proper types
-    .withColumn("latitude", F.col("latitude").cast(DoubleType()))
-    .withColumn("longitude", F.col("longitude").cast(DoubleType()))
-    .withColumn("speed", F.col("speed").cast(IntegerType()))
-    .withColumn("fuel_level", F.col("fuel_level").cast(IntegerType()))
-    .withColumn("event_timestamp", F.col("event_timestamp").cast(TimestampType()))
-
-    # 🧼 Rule 1: Filter out Malformed Truck IDs and Missing Tracker IDs
-    .filter(
-        (~F.col("truck_id").contains("_ERR")) & 
-        (F.col("tracker_id") != "") & 
-        (F.col("tracker_id").isNotNull()) &
-        (F.col("driver_id") != "DRV_999") # Ensuring only valid drivers move to Silver
-    )
-
-    # 🧼 Rule 2: Handle GPS Failures (0.0, 0.0)
-    # We replace 0 coordinates with NULL to avoid plotting errors
-    .withColumn("latitude", F.when(F.col("latitude") == 0, F.lit(None)).otherwise(F.col("latitude")))
-    .withColumn("longitude", F.when(F.col("longitude") == 0, F.lit(None)).otherwise(F.col("longitude")))
-
-    # 🧼 Rule 3: Handle Speed Outliers
-    # -1: Sensor Error -> NULL
-    # 999: Glitch/Impossible speed -> NULL
-    .withColumn("speed", 
-        F.when(F.col("speed").isin([-1, 999]), F.lit(None)).otherwise(F.col("speed"))
-    )
-
-    # 🧼 Rule 4: Standardize Status Strings
-    # Trim spaces and convert to uppercase (handles 'Active', 'ACTIVE', 'inactive ')
-    .withColumn("status", F.upper(F.trim(F.col("status"))))
-
-    # 🧼 Rule 5: Deduplication
-    .dropDuplicates(["tracker_id", "event_timestamp"])
-
-    # 2. Add Silver Processing Metadata
-    .withColumn("processed_timestamp", F.current_timestamp())
-    
-    # 3. Final Column Selection
-    .select(
-        "tracker_id",
-        "truck_id",
-        "driver_id",
-        "latitude",
-        "longitude",
-        "speed",
-        "fuel_level",
-        "status",
-        "event_timestamp",
-        "ingestion_timestamp",
-        "processed_timestamp",
-        "source_file"
-    )
-)
+df_silver = transform_trackers_silver(df_bronze)
 
 # COMMAND ----------
 # === 7. WRITE TO SILVER DELTA ===

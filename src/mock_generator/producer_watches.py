@@ -25,7 +25,11 @@ import argparse
 import logging
 import shutil
 from datetime import datetime, timezone
-from botocore.exceptions import NoCredentialsError
+
+# Pure event-generation logic, extracted into a side-effect-free module so it can
+# be unit-tested locally. Resolves because this script's directory is on sys.path
+# when run as a Databricks spark_python_task (and the bundle ships src/).
+from generators import generate_watch_event
 
 # --- DIRECTORY CONFIGURATION ---
 # Use __file__ if available (standard Python), otherwise fallback to current working directory (Databricks)
@@ -121,61 +125,6 @@ try:
 except FileNotFoundError:
     logger.error(f"fleet_config.json not found at {config_path}")
     sys.exit(1)
-
-def generate_watch_event(driver_info: dict, synced_time: datetime) -> dict:
-    """Generate a single watch biometric event synced to a specific timestamp.
-
-    Randomly injects malformed values (error watch IDs, unknown user, empty watch
-    ID, null/sentinel/outlier heart rates) and omits the stress score ~20% of the
-    time to simulate real-world wearable data quality issues.
-
-    Args:
-        driver_info: A driver/device mapping entry from ``fleet_config.json``.
-        synced_time: The UTC timestamp (truncated to the minute) for the event.
-
-    Returns:
-        A dict representing one watch biometric record with nested ``metrics``.
-    """
-    id_roll = random.random()
-    watch_id = driver_info["watch_id"]
-    user_id = driver_info["driver_id"]
-    
-    # ID Consistency & Error Logic
-    if id_roll < 0.04:
-        watch_id += "_ERR" 
-    elif id_roll < 0.07:
-        user_id = "DRV_999" 
-    elif id_roll < 0.10:
-        watch_id = ""
-    
-    # Scenario: Normal or Dirty Data
-    error_roll = random.random()
-    if error_roll < 0.05:
-        heart_rate = None
-    elif error_roll < 0.08:
-        heart_rate = -999
-    elif error_roll < 0.10:
-        heart_rate = 0
-    elif error_roll < 0.12:
-        heart_rate = 250
-    else:
-        heart_rate = random.randint(65, 95)
-
-    event = {
-        "watch_id": watch_id,
-        "user_id": user_id,
-        "event_timestamp": synced_time.isoformat(), 
-        "metrics": {
-            "heart_rate": heart_rate,
-            "steps": random.randint(0, 50),
-            "battery_level": random.randint(5, 100)
-        }
-    }
-
-    if random.random() < 0.80:
-        event["metrics"]["stress_score"] = random.randint(1, 100)
-
-    return event
 
 def upload_to_s3(local_file_path: str, s3_key: str) -> bool:
     """Upload a local file to S3 using Boto3.

@@ -22,6 +22,21 @@ if "__file__" in locals() or "__file__" in globals():
 else:
     current_dir = os.getcwd()
 
+# --- IMPORTABLE GOLD LOGIC ---
+# The risk_score / temporal-join / dedup SQL and the empty-view DQ guard live in a
+# pure, unit-tested module under src/. The bundle ships src/ to the workspace; add
+# it to sys.path. A wrong path surfaces loudly as an ImportError on the first run.
+_SRC = os.path.abspath(os.path.join(current_dir, "..", "..", "src"))
+if _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
+from fleet_transforms.gold import (  # noqa: E402
+    check_enriched_not_empty,
+    enriched_view_select_sql,
+    live_status_select_sql,
+    safety_alerts_select_sql,
+    safety_metrics_select_sql,
+)
+
 # --- HYBRID CONFIGURATION (Local .env support) ---
 try:
     from dotenv import load_dotenv
@@ -103,31 +118,10 @@ spark.sql(f"USE SCHEMA {gold_schema}")
 
 logger.info(f"Context locked to {gold_catalog}. Ready for JOIN.")
 
-spark.sql(f"""
-CREATE OR REPLACE TEMPORARY VIEW fleet_enriched_view AS
-SELECT
-    t.driver_id,
-    t.truck_id,
-    t.event_timestamp as timestamp,
-    t.latitude,
-    t.longitude,
-    t.speed,
-    t.fuel_level,
-    w.heart_rate,
-    w.stress_score,
-    ROUND(
-        LEAST(100.0,
-            (COALESCE(t.speed, 0)        / 120.0 * 40) +
-            (COALESCE(w.stress_score, 0) / 100.0 * 35) +
-            (COALESCE(w.heart_rate, 0)   / 110.0 * 25)
-        ), 2
-    ) AS risk_score
-FROM {t_silver_path} t
-INNER JOIN {w_silver_path} w
-    ON t.driver_id = w.user_id
-    AND t.event_timestamp BETWEEN w.event_timestamp - INTERVAL 60 SECONDS
-                          AND w.event_timestamp + INTERVAL 60 SECONDS
-""")
+spark.sql(
+    "CREATE OR REPLACE TEMPORARY VIEW fleet_enriched_view AS"
+    + enriched_view_select_sql(t_silver_path, w_silver_path)
+)
 
 # COMMAND ----------
 # --- DATA QUALITY: enriched view must not be empty ---
@@ -135,12 +129,7 @@ INNER JOIN {w_silver_path} w
 # This is always a pipeline problem (timestamp skew, empty Silver tables) — not a
 # valid business state — so we raise immediately rather than silently writing empty tables.
 view_count = spark.sql("SELECT COUNT(*) AS cnt FROM fleet_enriched_view").collect()[0]["cnt"]
-if view_count == 0:
-    raise ValueError(
-        "Gold DQ FAILED: fleet_enriched_view has 0 rows. "
-        "Verify that both Silver tables contain records with overlapping event_timestamp "
-        "ranges within the 60-second join window."
-    )
+check_enriched_not_empty(view_count)
 logger.info(f"DQ passed: fleet_enriched_view contains {view_count:,} rows.")
 
 # COMMAND ----------
@@ -153,13 +142,10 @@ logger.info(f"Updating Gold Tables in {gold_catalog}.{gold_schema}...")
 
 # Table 1: Live Status (Latest record per driver)
 # risk_score flows through from fleet_enriched_view via SELECT * EXCEPT(rn).
-spark.sql(f"""
-CREATE OR REPLACE TABLE {live_status_table} AS
-SELECT * EXCEPT(rn) FROM (
-    SELECT *, ROW_NUMBER() OVER (PARTITION BY driver_id ORDER BY timestamp DESC) as rn
-    FROM fleet_enriched_view
-) WHERE rn = 1
-""")
+spark.sql(
+    f"CREATE OR REPLACE TABLE {live_status_table} AS"
+    + live_status_select_sql("fleet_enriched_view")
+)
 
 # --- DATA QUALITY: fleet_live_status ---
 null_keys = spark.sql(f"""
@@ -184,20 +170,10 @@ if out_of_range > 0:
 logger.info(f"DQ passed: all risk_score values in {live_status_table} are within [0.0, 100.0].")
 
 # Table 2: Hourly Safety Metrics (Aggregated)
-spark.sql(f"""
-CREATE OR REPLACE TABLE {safety_metrics_table} AS
-SELECT
-    driver_id,
-    CAST(window(timestamp, "1 hour").start AS TIMESTAMP) as hour_bucket,
-    ROUND(AVG(heart_rate), 2) as avg_heart_rate,
-    MAX(speed) as max_speed,
-    ROUND(AVG(stress_score), 2) as avg_stress,
-    ROUND(AVG(risk_score), 2) as avg_risk_score,
-    MAX(risk_score) as max_risk_score
-FROM fleet_enriched_view
-GROUP BY driver_id, hour_bucket
-ORDER BY driver_id ASC, hour_bucket DESC
-""")
+spark.sql(
+    f"CREATE OR REPLACE TABLE {safety_metrics_table} AS"
+    + safety_metrics_select_sql("fleet_enriched_view")
+)
 
 # --- DATA QUALITY: driver_safety_metrics ---
 metrics_count = spark.sql(f"SELECT COUNT(*) AS cnt FROM {safety_metrics_table}").collect()[0]["cnt"]
@@ -210,26 +186,9 @@ logger.info(f"DQ passed: {safety_metrics_table} contains {metrics_count:,} rows.
 
 # Table 3: Safety Alerts (Historical Log)
 # risk_score is included so Grafana alert panels can threshold on a single numeric column.
-spark.sql(f"""
-CREATE OR REPLACE TABLE {safety_alerts_table} AS
-SELECT
-    timestamp,
-    driver_id,
-    truck_id,
-    speed,
-    heart_rate,
-    stress_score,
-    risk_score,
-    CASE
-        WHEN speed > 90 AND heart_rate > 90 THEN 'CRITICAL: High Speed & Stress'
-        WHEN heart_rate > 110 THEN 'DANGER: Extreme Heart Rate'
-        WHEN heart_rate > 90 THEN 'WARNING: Elevated Heart Rate'
-        WHEN speed > 90 THEN 'OVERSPEED'
-        ELSE 'NORMAL'
-    END as alert_type
-FROM fleet_enriched_view
-WHERE speed > 90 OR heart_rate > 90
-ORDER BY timestamp DESC
-""")
+spark.sql(
+    f"CREATE OR REPLACE TABLE {safety_alerts_table} AS"
+    + safety_alerts_select_sql("fleet_enriched_view")
+)
 
 logger.info("✅ Gold Enrichment Complete!")

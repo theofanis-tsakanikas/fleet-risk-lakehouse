@@ -11,8 +11,6 @@ import os
 import logging
 import sys
 from databricks.connect import DatabricksSession
-from pyspark.sql import functions as F
-from pyspark.sql.types import TimestampType, IntegerType
 
 # --- DIRECTORY CONFIGURATION ---
 # Use __file__ if available (standard Python), otherwise fallback to current working directory (Databricks)
@@ -20,6 +18,15 @@ if "__file__" in locals() or "__file__" in globals():
     current_dir = os.path.dirname(os.path.abspath(__file__))
 else:
     current_dir = os.getcwd()
+
+# --- IMPORTABLE TRANSFORM LOGIC ---
+# The Silver cleansing logic lives in a pure, unit-tested module under src/.
+# The bundle ships src/ to the workspace; add it to sys.path so this notebook can
+# import it. A wrong path surfaces loudly as an ImportError on the first run.
+_SRC = os.path.abspath(os.path.join(current_dir, "..", "..", "src"))
+if _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
+from fleet_transforms.silver import transform_watches_silver  # noqa: E402
 
 # --- HYBRID CONFIGURATION & LOCAL DEV SUPPORT ---
 # We use a try-except block for 'python-dotenv' for local development support.
@@ -103,55 +110,7 @@ df_bronze = spark.readStream.table(bronze_table)
 
 logger.info("Applying Silver cleaning rules and flattening metrics...")
 
-df_silver = (df_bronze
-    # 1. Flatten nested metrics and cast to proper types
-    .withColumn("heart_rate", F.col("metrics.heart_rate").cast(IntegerType()))
-    .withColumn("steps", F.col("metrics.steps").cast(IntegerType()))
-    .withColumn("battery_level", F.col("metrics.battery_level").cast(IntegerType()))
-    .withColumn("stress_score", F.col("metrics.stress_score").cast(IntegerType()))
-    
-    # 2. Convert event_timestamp from ISO string to Timestamp
-    .withColumn("event_timestamp", F.col("event_timestamp").cast(TimestampType()))
-
-    # 🧼 Rule 1: Filter out Malformed IDs (IDs containing '_ERR') or Missing IDs
-    .filter(
-        (~F.col("watch_id").contains("_ERR")) & 
-        (F.col("watch_id") != "") & 
-        (F.col("watch_id").isNotNull()) &
-        (F.col("user_id") != "DRV_999") # Drop unknown drivers to keep Silver clean
-    )
-
-    # 🧼 Rule 2: Handle Invalid Sensor Data (Heart Rate)
-    # -999: Hardware error -> NULL
-    # 0: Dead sensor -> NULL
-    # > 220: Impossible outlier -> NULL
-    .withColumn("heart_rate", 
-        F.when(F.col("heart_rate").isin([-999, 0]), F.lit(None))
-         .when(F.col("heart_rate") > 220, F.lit(None))
-         .otherwise(F.col("heart_rate"))
-    )
-
-    # 🧼 Rule 3: Deduplication (Handle the 20% duplicate injection from producer)
-    # We use dropDuplicates on the unique event key
-    .dropDuplicates(["watch_id", "event_timestamp"])
-
-    # 3. Add Silver Processing Metadata
-    .withColumn("processed_timestamp", F.current_timestamp())
-    
-    # 4. Final Column Selection
-    .select(
-        "watch_id",
-        "user_id",
-        "event_timestamp",
-        "heart_rate",
-        "steps",
-        "battery_level",
-        "stress_score",
-        "ingestion_timestamp", # Originates from Bronze Auto Loader
-        "processed_timestamp", 
-        "source_file"
-    )
-)
+df_silver = transform_watches_silver(df_bronze)
 
 # COMMAND ----------
 # === 7. WRITE TO SILVER DELTA ===

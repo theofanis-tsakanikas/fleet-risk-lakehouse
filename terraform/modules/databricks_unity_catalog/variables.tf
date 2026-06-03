@@ -19,9 +19,9 @@ variable "data_bucket_id" {
 variable "external_locations" {
   description = "Map of external locations to create in Unity Catalog"
   type = map(object({
-    path             = string
-    comment         = string
-    grants          = map(list(string)) # e.g., "data_engineers" = ["READ_FILES", "WRITE_FILES"]
+    path    = string
+    comment = string
+    grants  = map(list(string)) # e.g., "data_engineers" = ["READ_FILES", "WRITE_FILES"]
   }))
   default = {}
 }
@@ -33,17 +33,17 @@ variable "catalogs" {
     comment               = string
     external_location_key = string # Link to the external_locations map key
     grants                = map(list(string))
-    
+
     schemas = map(object({
       comment = string
       grants  = map(list(string))
-      
+
       volumes = map(object({
-        volume_type = string # "MANAGED" or "EXTERNAL"
+        volume_type           = string # "MANAGED" or "EXTERNAL"
         external_location_key = optional(string)
-        path        = optional(string)
-        comment     = string
-        grants      = map(list(string))
+        path                  = optional(string)
+        comment               = string
+        grants                = map(list(string))
       }))
     }))
   }))

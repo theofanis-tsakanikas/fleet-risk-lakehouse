@@ -9,16 +9,16 @@ resource "aws_iam_role" "metastore_role" {
 
 data "aws_iam_policy_document" "metastore_s3_access" {
   statement {
-    sid     = "MetastoreBucketListing"
-    effect  = "Allow"
-    actions = ["s3:ListBucket", "s3:GetBucketLocation", "s3:ListBucketMultipartUploads"]
+    sid       = "MetastoreBucketListing"
+    effect    = "Allow"
+    actions   = ["s3:ListBucket", "s3:GetBucketLocation", "s3:ListBucketMultipartUploads"]
     resources = [var.metastore_bucket_arn]
   }
 
   statement {
-    sid     = "MetastoreObjectActions"
-    effect  = "Allow"
-    actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListMultipartUploadParts", "s3:AbortMultipartUpload"]
+    sid       = "MetastoreObjectActions"
+    effect    = "Allow"
+    actions   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListMultipartUploadParts", "s3:AbortMultipartUpload"]
     resources = ["${var.metastore_bucket_arn}/*"]
   }
 }

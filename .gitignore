@@ -33,6 +33,15 @@ crash.*.log
 active_bundle.json
 
 # ==========================================
+# 🧪 Test suite artifacts (local Spark + pytest + ruff)
+# ==========================================
+.pytest_cache/
+.ruff_cache/
+spark-warehouse/
+metastore_db/
+derby.log
+
+# ==========================================
 # 🖥️ OS & IDE Settings
 # ==========================================
 .DS_Store

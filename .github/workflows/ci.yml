@@ -1,0 +1,76 @@
+name: "CI (Local Test Suite)"
+
+# Runs the infrastructure-free local test suite (pure-Python + local PySpark
+# transforms, ruff lint/format, and the offline Terraform fmt/validate checks) on
+# every PR and on pushes to main. Needs NO cloud credentials — it reproduces the
+# exact gates that pass locally. The two existing workflows
+# (deploy-fleet-pipeline.yml, terraform-plan-pr.yml) are untouched.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+# Cancel superseded runs for the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: "Lint + Local Tests"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: "Checkout Repository"
+        uses: actions/checkout@v4
+
+      - name: "Setup Python 3.9"
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: "Setup Java 17 (for PySpark)"
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: "Read Pinned Terraform Version"
+        id: tfver
+        run: echo "version=$(cat .terraform-version)" >> "$GITHUB_OUTPUT"
+
+      - name: "Setup Terraform (pinned to .terraform-version)"
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ steps.tfver.outputs.version }}
+          terraform_wrapper: false
+
+      - name: "Install Dev Dependencies"
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: "Ruff Lint"
+        run: ruff check src notebooks tests
+
+      - name: "Ruff Format Check"
+        # Scoped to the test suite + extracted transform modules. The notebooks
+        # and producer scripts are formatted by black (see .pre-commit-config.yaml),
+        # whose style differs slightly from ruff's formatter — so they are excluded
+        # from this gate to avoid a black/ruff conflict.
+        run: ruff format --check src/fleet_transforms src/mock_generator/generators.py tests
+
+      - name: "Run Local Test Suite (pytest)"
+        # Full suite: pure-Python + local PySpark transforms, the whole-tree
+        # `terraform fmt -check`, and offline `terraform validate`. The
+        # databricks-bundle-validate test self-skips (CLI/auth absent in CI).
+        run: python -m pytest -ra

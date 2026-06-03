@@ -7,9 +7,9 @@ resource "databricks_mws_workspaces" "this" {
   account_id     = var.databricks_account_id
   aws_region     = var.region
   workspace_name = "${var.workspace_name}-${var.environment}"
-  
-  pricing_tier   = var.workspace_pricing_tier 
-  compute_mode   = "SERVERLESS"
+
+  pricing_tier = var.workspace_pricing_tier
+  compute_mode = "SERVERLESS"
 }
 
 # --- 🔗 2. Metastore Assignment ---
@@ -31,13 +31,13 @@ resource "databricks_mws_permission_assignment" "all_groups_assignment" {
   for_each     = var.functional_group_ids
   workspace_id = databricks_mws_workspaces.this.workspace_id
   principal_id = each.value
-  permissions  = ["USER"] 
+  permissions  = ["USER"]
   depends_on   = [databricks_metastore_assignment.this]
 }
 
 resource "time_sleep" "wait_for_identity_sync" {
   depends_on = [
-    databricks_mws_permission_assignment.workspace_admin_assignment, 
+    databricks_mws_permission_assignment.workspace_admin_assignment,
     databricks_mws_permission_assignment.all_groups_assignment
   ]
   create_duration = "60s"
@@ -51,7 +51,7 @@ resource "databricks_mws_network_connectivity_config" "ncc" {
 }
 
 resource "time_sleep" "wait_30_seconds" {
-  depends_on = [databricks_mws_network_connectivity_config.ncc]
+  depends_on       = [databricks_mws_network_connectivity_config.ncc]
   destroy_duration = "30s"
 }
 

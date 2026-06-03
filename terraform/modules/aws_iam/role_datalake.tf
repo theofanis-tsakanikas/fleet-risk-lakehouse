@@ -104,7 +104,7 @@ data "aws_iam_policy_document" "managed_file_events" {
       "sqs:PurgeQueue"
     ]
     resources = [
-      var.data_bucket_arn, 
+      var.data_bucket_arn,
       "arn:aws:sqs:*:*:csms-*",
       "arn:aws:sns:*:*:csms-*"
     ]
