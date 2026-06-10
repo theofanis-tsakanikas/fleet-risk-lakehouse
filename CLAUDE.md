@@ -72,8 +72,8 @@ cp .env.example .env
 
 | Variable | Used By | Source |
 |---|---|---|
-| `AWS_ACCESS_KEY_ID` | All Terraform layers, mock generators | AWS IAM admin user access key |
-| `AWS_SECRET_ACCESS_KEY` | All Terraform layers, mock generators | AWS IAM admin user secret |
+| `AWS_ACCESS_KEY_ID` | Local Terraform runs, mock generators | AWS IAM admin user access key (local only — CI authenticates via OIDC) |
+| `AWS_SECRET_ACCESS_KEY` | Local Terraform runs, mock generators | AWS IAM admin user secret (local only — CI authenticates via OIDC) |
 | `AWS_DEFAULT_REGION` | All | Hardcode to `eu-central-1` |
 | `TF_VAR_databricks_account_id` | `01_infra` | Databricks Account Console (top-right menu) |
 | `TF_VAR_databricks_client_id` | `01_infra` | Pre-existing **Account Admin** SPN client ID |
@@ -85,6 +85,12 @@ cp .env.example .env
 | `S3_FOLDER_WATCHES` / `S3_FOLDER_TRACKERS` | Mock generators | Landing zone S3 paths |
 | `WATCHES_CATALOG` / `TRACKERS_CATALOG` / `GOLD_CATALOG` | Notebooks | Unity Catalog catalog names |
 | `*_SCHEMA` / `*_TABLE` / `*_VOLUME` variables | Notebooks | UC object names; defaults match `databricks.yml` |
+
+> **CI authentication is OIDC-based:** both GitHub workflows assume the IAM role in the
+> `AWS_DEPLOY_ROLE_ARN` repository secret via `aws-actions/configure-aws-credentials` —
+> no long-lived AWS keys are stored in GitHub. The role's trust policy must allow the
+> repository's GitHub OIDC provider. Deploy jobs additionally target the `production`
+> GitHub Environment, so a required-reviewer approval gates every apply.
 
 > **`TF_VAR_spn_client_id` and `TF_VAR_spn_client_secret` are never set manually.**
 > `terraform.sh` fetches them automatically from AWS Secrets Manager after layer `01_infra` has been applied — see [Terraform Secret Injection](#terraform-secret-injection) below.

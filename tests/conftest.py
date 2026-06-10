@@ -7,10 +7,17 @@ or ``metastore_db/`` directory in the repo. Requires Java 17 on PATH (see
 docs/TESTING.md).
 """
 
+import os
 import sys
 from pathlib import Path
 
 import pytest
+
+# Point Spark worker processes at the same Python interpreter as the driver.
+# Without this, workers default to the system Python (which may be a different
+# version) and Spark fails with PYTHON_VERSION_MISMATCH.
+os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
+os.environ.setdefault("PYSPARK_DRIVER_PYTHON", sys.executable)
 
 # Make the extracted, infra-free modules importable without installing them:
 #   - src/                      -> `fleet_transforms` package

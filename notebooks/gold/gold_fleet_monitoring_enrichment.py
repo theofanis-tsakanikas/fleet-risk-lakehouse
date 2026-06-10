@@ -10,7 +10,6 @@
 import os
 import logging
 import sys
-from databricks.connect import DatabricksSession
 
 # --- LOGGER CONFIGURATION ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
