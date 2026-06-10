@@ -68,12 +68,27 @@ variables:
     default: "checkpoints"
 
 # --- TARGET ENVIRONMENTS ---
-targets: 
+targets:
   dev:
+    mode: development
+    default: true
     workspace:
       # host: ${DATABRICKS_HOST} # Usually set via environment variables in CI/CD
     run_as:
       service_principal_name: ${var.spn_id}
+
+  prod:
+    mode: production
+    workspace:
+      # host is injected via DATABRICKS_HOST in CI/CD
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+    run_as:
+      service_principal_name: ${var.spn_id}
+    variables:
+      # Production catalogs are physically separate from dev.
+      watches_catalog: "wearables_prod"
+      trackers_catalog: "trackers_prod"
+      gold_catalog: "fleet_prod"
 
 # --- RESOURCES (JOBS & WORKFLOWS) ---
 resources:
@@ -83,6 +98,11 @@ resources:
 
       queue:
         enabled: true
+
+      # Never run two pipeline instances concurrently (checkpoint safety),
+      # and fail loudly instead of hanging forever.
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
 
       tasks:
         # ----------------------------------------------------------------------
@@ -97,8 +117,6 @@ resources:
           spark_python_task:
             python_file: ./src/mock_generator/producer_trackers.py
             parameters:
-              #- "--bucket"
-              #- "dbx-data-lake-bucket"
               - "--folder"
               - "landing-zone/trackers"
               - "--batches"
@@ -115,8 +133,6 @@ resources:
           spark_python_task:
             python_file: ./src/mock_generator/producer_watches.py
             parameters:
-              #- "--bucket"
-              #- "dbx-data-lake-bucket"
               - "--folder"
               - "landing-zone/watches"
               - "--batches"

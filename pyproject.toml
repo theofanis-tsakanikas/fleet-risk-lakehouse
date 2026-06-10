@@ -11,7 +11,7 @@ pythonpath = ["src", "src/mock_generator"]
 addopts = "-ra"
 
 [tool.ruff]
-target-version = "py39"
+target-version = "py311"
 line-length = 120
 extend-exclude = [".venv", "terraform"]
 

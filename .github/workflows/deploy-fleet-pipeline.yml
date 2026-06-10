@@ -19,6 +19,10 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+permissions:
+  id-token: write   # OIDC token for aws-actions/configure-aws-credentials
+  contents: read
+
 jobs:
   # --- 🏗️ JOB 1: INFRASTRUCTURE DEPLOYMENT (TERRAFORM) ---
   infrastructure:
@@ -29,15 +33,11 @@ jobs:
     outputs:
       project_spn_id: ${{ steps.get_outputs.outputs.SPN_ID }}
     
-    # Set default working directory to the specific project folder
-    # defaults:
-    #   run:
-    #     working-directory: .
+    # Require manual approval via the GitHub Environment before any apply.
+    # Configure reviewers under Settings → Environments → production.
+    environment: production
 
-    # Load required credentials from GitHub Secrets into Environment Variables
     env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
       # Mapping Admin Secrets to Terraform-recognized variables (TF_VAR_ prefix)
       TF_VAR_databricks_account_id: ${{ secrets.DATABRICKS_ACCOUNT_ID }}
@@ -49,9 +49,20 @@ jobs:
       - name: "Checkout Repository"
         uses: actions/checkout@v4
 
-      - name: "Setup Terraform Engine"
+      - name: "Configure AWS Credentials (OIDC — no long-lived keys)"
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_DEFAULT_REGION }}
+
+      - name: "Read Pinned Terraform Version"
+        id: tfver
+        run: echo "version=$(cat .terraform-version)" >> "$GITHUB_OUTPUT"
+
+      - name: "Setup Terraform Engine (pinned)"
         uses: hashicorp/setup-terraform@v3
         with:
+          terraform_version: ${{ steps.tfver.outputs.version }}
           terraform_wrapper: false
 
       - name: "Execute Terraform Layers"
@@ -71,10 +82,7 @@ jobs:
         working-directory: .
         run: |
 
-          echo "The output file is located at: $GITHUB_OUTPUT"
-
           # Fetch the ID and remove any hidden characters
-          #ID=$(terraform output -raw spn_application_id | tr -d '\n' | tr -d '\r')
           ID=$(terraform -chdir=terraform/01_infra output -raw spn_application_id | tr -d '[:space:]')
 
           if [ -z "$ID" ]; then
@@ -82,20 +90,8 @@ jobs:
             exit 1
           fi
           
-          # Print the values to the console for debugging purposes
           echo "Extracted SPN: $ID"
-          
-          # Important: Use the absolute path to GITHUB_OUTPUT to bypass working-directory issues
           echo "SPN_ID=$ID" >> "$GITHUB_OUTPUT"
-
-          # echo "--- DEBUG: Contents of GITHUB_OUTPUT file ---"
-          # cat "$GITHUB_OUTPUT"
-          # echo "--- END OF DEBUG ---"
-      
-      - name: "Final Job Output Validation"
-        run: |
-          echo "Checking Job Outputs context..."
-          echo "Value of steps.get_outputs.outputs.SPN_ID: ${{ steps.get_outputs.outputs.SPN_ID }}"
 
 
   # --- 📦 JOB 2: DATABRICKS ASSET BUNDLE DEPLOY ---
@@ -104,10 +100,7 @@ jobs:
     # This job only runs if the 'infrastructure' job completes successfully
     needs: infrastructure
     runs-on: ubuntu-latest
-    
-    defaults:
-      run:
-        working-directory: .
+    environment: production
 
     steps:
       - name: "Checkout Repository"
@@ -115,10 +108,6 @@ jobs:
 
       - name: "Setup Databricks CLI"
         uses: databricks/setup-cli@main
-
-      # - name: "Manual Check of Job 1 Outputs"
-      #   run: |
-      #     echo "SPN ID: ${{ needs.infrastructure.outputs.project_spn_id }}"
 
       - name: "Deploy Bundle via Hybrid Script"
         env:

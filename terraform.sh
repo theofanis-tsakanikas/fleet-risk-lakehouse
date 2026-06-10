@@ -77,7 +77,7 @@ case $ACTION in
     terraform plan -input=false
     ;;
   apply)
-    # ΕΠΑΓΓΕΛΜΑΤΙΚΗ ΚΙΝΗΣΗ: Αυτόματο init πριν το apply
+    # Always init before apply so a fresh clone works without a manual step
     echo "🏗️  Initializing Terraform before apply..."
     terraform init -input=false
     echo "🚀 Running Terraform Apply..."
