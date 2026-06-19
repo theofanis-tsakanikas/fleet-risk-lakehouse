@@ -59,8 +59,17 @@ _ENRICHED_SCHEMA = StructType(
         StructField("heart_rate", IntegerType()),
         StructField("stress_score", IntegerType()),
         StructField("risk_score", DoubleType()),
+        # Explainability columns added to the enriched view (risk_model.py).
+        StructField("risk_speed_pts", DoubleType()),
+        StructField("risk_stress_pts", DoubleType()),
+        StructField("risk_heart_rate_pts", DoubleType()),
+        StructField("risk_primary_factor", StringType()),
     ]
 )
+
+# Default values for the four explainability columns, so existing 10-column
+# synthetic enriched rows (which predate them) still satisfy the schema.
+_EXPLAIN_DEFAULTS = (0.0, 0.0, 0.0, "none")
 
 
 def _enrich(spark, trackers, watches):
@@ -71,7 +80,9 @@ def _enrich(spark, trackers, watches):
 
 
 def _enriched_view(spark, rows, name="enriched"):
-    spark.createDataFrame(rows, _ENRICHED_SCHEMA).createOrReplaceTempView(name)
+    # Pad legacy 10-column rows with the explainability-column defaults.
+    padded = [r + _EXPLAIN_DEFAULTS if len(r) == 10 else r for r in rows]
+    spark.createDataFrame(padded, _ENRICHED_SCHEMA).createOrReplaceTempView(name)
     return name
 
 

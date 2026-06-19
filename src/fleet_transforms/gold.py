@@ -12,15 +12,28 @@ any managed tables, warehouse or metastore.
 Identifier note: the source arguments are interpolated as raw SQL identifiers,
 exactly as before. Pass fully-qualified table paths in production
 (``catalog.schema.table``) or temp-view names in tests.
+
+The ``risk_score`` arithmetic and the alert thresholds are not hard-coded here — they come
+from :data:`fleet_transforms.risk_model.RISK_MODEL`, the single source of truth that also
+produces the generated risk model card. The Gold view additionally emits the per-factor
+point contributions (``risk_<factor>_pts``) and ``risk_primary_factor`` so a high-risk
+driver is explainable, not merely flagged.
 """
+
+from fleet_transforms.risk_model import RISK_MODEL
+
+# Qualified source expressions for each risk factor inside the enriched SELECT.
+_RISK_EXPRS = {"speed": "t.speed", "stress": "w.stress_score", "heart_rate": "w.heart_rate"}
 
 
 def enriched_view_select_sql(t_silver_path: str, w_silver_path: str) -> str:
     """Return the SELECT defining ``fleet_enriched_view`` (temporal join + risk).
 
-    Implements the ±60-second ``INNER JOIN`` between trackers and watches and the
-    weighted ``risk_score`` (speed 40 / stress 35 / heart_rate 25, NULLs coalesced
-    to 0, capped at 100 via ``LEAST``).
+    Implements the ±60-second ``INNER JOIN`` between trackers and watches, the weighted
+    ``risk_score`` (built from :data:`RISK_MODEL` — speed 40 / stress 35 / heart_rate 25,
+    NULLs coalesced to 0, capped at 100), and the explainability columns: each factor's
+    point contribution (``risk_speed_pts`` / ``risk_stress_pts`` / ``risk_heart_rate_pts``)
+    and ``risk_primary_factor`` (the factor that drove the score).
 
     Args:
         t_silver_path: Trackers Silver table identifier (aliased ``t``).
@@ -29,6 +42,7 @@ def enriched_view_select_sql(t_silver_path: str, w_silver_path: str) -> str:
     Returns:
         The SQL ``SELECT`` body (no surrounding DDL).
     """
+    contribution_cols = ",\n    ".join(RISK_MODEL.contribution_columns_sql(_RISK_EXPRS))
     return f"""
 SELECT
     t.driver_id,
@@ -40,13 +54,9 @@ SELECT
     t.fuel_level,
     w.heart_rate,
     w.stress_score,
-    ROUND(
-        LEAST(100.0,
-            (COALESCE(t.speed, 0)        / 120.0 * 40) +
-            (COALESCE(w.stress_score, 0) / 100.0 * 35) +
-            (COALESCE(w.heart_rate, 0)   / 110.0 * 25)
-        ), 2
-    ) AS risk_score
+    {RISK_MODEL.risk_score_sql(_RISK_EXPRS)} AS risk_score,
+    {contribution_cols},
+    {RISK_MODEL.primary_factor_sql(_RISK_EXPRS)} AS risk_primary_factor
 FROM {t_silver_path} t
 INNER JOIN {w_silver_path} w
     ON t.driver_id = w.user_id
@@ -102,8 +112,10 @@ ORDER BY driver_id ASC, hour_bucket DESC
 def safety_alerts_select_sql(source: str) -> str:
     """Return the SELECT for ``fleet_safety_alerts`` (historical alert log).
 
-    Keeps every qualifying row (``speed > 90 OR heart_rate > 90``) — no per-driver
-    deduplication — and classifies each into an ``alert_type``.
+    Keeps every qualifying row (``speed > overspeed OR heart_rate > heart_rate_warning``)
+    — no per-driver deduplication — classifies each into an ``alert_type``, and carries
+    ``risk_primary_factor`` so each alert states which factor drove it. Thresholds come
+    from :data:`RISK_MODEL`.
 
     Args:
         source: The enriched-view identifier to read from.
@@ -111,6 +123,9 @@ def safety_alerts_select_sql(source: str) -> str:
     Returns:
         The SQL ``SELECT`` body (no surrounding DDL).
     """
+    overspeed = RISK_MODEL.overspeed
+    hr_warn = RISK_MODEL.heart_rate_warning
+    hr_danger = RISK_MODEL.heart_rate_danger
     return f"""
 SELECT
     timestamp,
@@ -120,15 +135,16 @@ SELECT
     heart_rate,
     stress_score,
     risk_score,
+    risk_primary_factor,
     CASE
-        WHEN speed > 90 AND heart_rate > 90 THEN 'CRITICAL: High Speed & Stress'
-        WHEN heart_rate > 110 THEN 'DANGER: Extreme Heart Rate'
-        WHEN heart_rate > 90 THEN 'WARNING: Elevated Heart Rate'
-        WHEN speed > 90 THEN 'OVERSPEED'
+        WHEN speed > {overspeed} AND heart_rate > {hr_warn} THEN 'CRITICAL: High Speed & Stress'
+        WHEN heart_rate > {hr_danger} THEN 'DANGER: Extreme Heart Rate'
+        WHEN heart_rate > {hr_warn} THEN 'WARNING: Elevated Heart Rate'
+        WHEN speed > {overspeed} THEN 'OVERSPEED'
         ELSE 'NORMAL'
     END as alert_type
 FROM {source}
-WHERE speed > 90 OR heart_rate > 90
+WHERE speed > {overspeed} OR heart_rate > {hr_warn}
 ORDER BY timestamp DESC
 """
 

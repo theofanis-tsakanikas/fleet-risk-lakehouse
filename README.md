@@ -46,6 +46,8 @@ This repository is a portfolio piece showcasing production-grade data and platfo
 * **Medallion data architecture** — Bronze (Auto Loader ingestion) → Silver (cleansing, deduplication) → Gold (temporal join, risk scoring) on Apache Spark Structured Streaming.
 * **Asynchronous stream correlation** — a 60-second temporal join window to align independent telemetry and biometric streams. See [ADR-002](./docs/adr/ADR-002-temporal-join-window.md).
 * **Business-ready analytics** — a derived `risk_score` and inline data-quality assertions guarding every Gold table.
+* **Explainable-by-design risk scoring** — the risk index is a single source of truth in code (`src/fleet_transforms/risk_model.py`); the Gold view emits each factor's point contribution (`risk_speed_pts` / `risk_stress_pts` / `risk_heart_rate_pts`) and `risk_primary_factor`, so a high-risk driver is *explained*, not just flagged. A transparent linear index is a deliberate, auditable choice for a score that escalates a human — documented in the generated [risk model card](docs/governance/RISK_MODEL_CARD.md).
+* **Biometric data governance (GDPR)** — heart rate and stress are classified as **special-category data (Art. 9)** at the data layer; a CI test fails if any Gold column is left unclassified, and a GDPR Art. 30 processing record + data dictionary are generated from the code. See [docs/governance/](docs/governance/README.md).
 * **CI/CD automation** — GitHub Actions for full `apply` on merge and sticky Terraform `plan` comments on pull requests.
 * **Governance & observability** — Unity Catalog fine-grained access control and Grafana dashboards backed by a serverless SQL Warehouse. See [ADR-003](./docs/adr/ADR-003-sql-warehouse-grafana.md).
 
