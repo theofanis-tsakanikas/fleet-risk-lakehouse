@@ -240,6 +240,21 @@ thresholds used in `fleet_safety_alerts` (speed 120 km/h, stress 100 max, heart 
 danger threshold). See [ADR-002](docs/adr/ADR-002-temporal-join-window.md) and
 [ADR-003](docs/adr/ADR-003-sql-warehouse-grafana.md) for context on the Gold layer design.
 
+> **The formula lives in code, not inline SQL.** Weights, denominators, the cap, and the
+> alert thresholds are now defined once in `src/fleet_transforms/risk_model.py`
+> (`RISK_MODEL`); `gold.py` builds the SQL from it, and the generated risk model card reads
+> from the same object — so the documentation can never drift from the formula. Editing a
+> weight means running `PYTHONPATH=src python -m fleet_governance.generate` (CI's `--check`
+> enforces it).
+
+> **Explainability + biometric governance.** The Gold view now also emits the per-factor
+> point contributions (`risk_speed_pts` / `risk_stress_pts` / `risk_heart_rate_pts`) and
+> `risk_primary_factor`, so a high-risk driver is explained, not just flagged. Heart rate
+> and stress are classified as **special-category data (GDPR Art. 9)** in
+> `src/fleet_governance/classification.py`, and a CI test fails if any Gold column is left
+> unclassified. See [docs/governance/](docs/governance/README.md) (risk model card + GDPR
+> Art. 30 processing record, both generated from the code).
+
 ---
 
 ## Known Gotchas
