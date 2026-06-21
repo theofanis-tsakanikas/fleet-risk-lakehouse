@@ -37,10 +37,18 @@ cp .env.example .env   # then edit .env — see Environment Variables table belo
 │   │   └── silver_watches.py
 │   └── gold/                          # Temporal join, risk scoring, 3 business Gold tables
 │       └── gold_fleet_monitoring_enrichment.py
+├── src/fleet_transforms/              # Pure, unit-tested transform logic (no Spark session / I/O)
+│   ├── silver.py                      # Silver cleansing rules (trackers + watches)
+│   ├── gold.py                        # Gold SQL builders (temporal join, risk, explainability) + DQ guard
+│   └── risk_model.py                  # RISK_MODEL — single source of truth for the score + its explanation
+├── src/fleet_governance/              # Offline governance: column classification + generated docs
+│   ├── classification.py              # Gold column classification (biometrics = GDPR Art. 9 special category)
+│   └── generate.py                    # Generates docs/governance/ (risk model card + GDPR Art. 30 record)
 ├── src/mock_generator/                # Python IoT simulators (CSV trackers, JSON watches)
 │   ├── fleet_config.json              # 10 driver / truck / watch device mappings
 │   ├── producer_trackers.py
 │   └── producer_watches.py
+├── docs/governance/                   # Generated: RISK_MODEL_CARD.md + DATA_PROCESSING_RECORD.md (CI --check)
 ├── terraform/
 │   ├── 01_infra/                      # AWS: S3, IAM, Secrets Manager, SPN, Metastore, Workspace
 │   ├── 02_workspace/                  # Databricks: SQL Warehouse, metastore-level grants
