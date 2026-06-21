@@ -87,10 +87,13 @@ portfolio/
         │   ├── silver/             # Quality: Cleaning & Deduplication
         │   └── gold/               # Value: Temporal Joins & Risk Logic
         ├── src/
+        │   ├── fleet_transforms/   # Pure, unit-tested transforms (silver, gold, risk_model)
+        │   ├── fleet_governance/   # Column classification + generated governance docs
         │   └── mock_generator/     # IoT Simulation Engine
         │       ├── fleet_config.json
         │       ├── producer_trackers.py
         │       └── producer_watches.py
+        ├── docs/governance/        # Generated risk model card + GDPR Art. 30 processing record
         ├── databricks.yml          # DABs Deployment Definition
         ├── terraform.sh            # Custom IaC Layer Orchestrator
         ├── bundle.sh               # Asset Bundle & SPN Bridge
