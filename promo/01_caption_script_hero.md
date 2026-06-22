@@ -38,7 +38,7 @@ semi-transparent backing. 2.5–4s on screen. One line per beat.
 ### SCENE 5 — Close (0:60–0:70)
 - **Screen:** End card (dark). Project name + value line + your name / GitHub. Music resolves.
 - **Caption (static):**
-  > **Real-Time IoT Fleet Safety — Databricks Lakehouse**
+  > **Fleet Risk Lakehouse — Real-Time Driver-Risk Analytics**
   > Medallion architecture · live risk scoring · IaC + CI/CD
   > *<your name> — github.com/<you>*
 

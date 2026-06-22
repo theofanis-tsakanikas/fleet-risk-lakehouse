@@ -1,4 +1,4 @@
-# CLAUDE.md — Fleet Monitoring Platform: Engineering Reference
+# CLAUDE.md — Fleet Risk Lakehouse: Engineering Reference
 
 ## Quick Start
 

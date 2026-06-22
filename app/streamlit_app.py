@@ -1,7 +1,7 @@
 """Fleet Safety Command Center — Streamlit UI.
 
 An executive-facing dashboard over the Gold layer of the
-databricks-fleet-dabs-orchestration pipeline. It turns the three Gold business
+Fleet Risk Lakehouse pipeline. It turns the three Gold business
 tables (live status, hourly safety metrics, safety alerts) into a command
 centre: fleet KPIs, a live risk map, a driver risk leaderboard, per-driver
 drill-downs and a Medallion-architecture walkthrough.
