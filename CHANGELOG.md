@@ -19,9 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Inline data-quality assertions in the Gold notebook: non-empty enriched view, NULL key checks, `risk_score` range validation, and row-count guards.
 - Repository polish: README badges, table of contents, and "What This Project Demonstrates" section; `CHANGELOG.md`; GitHub issue and pull request templates; Dependabot configuration.
 - Module-level and function-level docstrings plus type hints on the mock-generator producer scripts.
+- gitleaks secret scanning: a pre-commit hook plus a CI workflow (`gitleaks.yml`, full git history); hardened `.gitignore` (secrets baseline).
 
 ### Changed
 - `requirements.txt` now includes `pre-commit`.
+- Renamed the project to **Fleet Risk Lakehouse** (previously "Real-Time IoT Fleet Analytics"; repo `databricks-fleet-dabs-orchestration`).
+- `deploy-fleet-pipeline.yml` is now **manual-only** (`workflow_dispatch`); removed the automatic `push: main` trigger so a code/doc merge can never deploy live infrastructure.
 
 ## [0.1.0] - 2026-05-31
 

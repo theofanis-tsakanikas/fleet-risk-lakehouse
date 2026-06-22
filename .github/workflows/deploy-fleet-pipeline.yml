@@ -1,19 +1,11 @@
 name: "Deploy Fleet Monitoring Pipeline"
 
 # --- 🚀 TRIGGER CONFIGURATION ---
+# Manual-only. This job runs a live `terraform apply` against real AWS/Databricks,
+# so it is deliberately NOT triggered on push to main — a doc/code merge must never
+# deploy infrastructure. Run it by hand from the Actions tab when you intend to deploy.
 on:
-  push:
-    branches: [ main ]
-    # Only trigger if changes occur within this specific project folder
-    paths:
-      - 'terraform/**'
-      - 'notebooks/**'
-      - 'src/**'
-      - 'databricks.yml'
-      - 'requirements.txt'
-      - '*.sh'
-  
-  # Allows manual triggering from the GitHub Actions tab
+  # Manual triggering from the GitHub Actions tab
   workflow_dispatch:
 
 env:
@@ -33,8 +25,9 @@ jobs:
     outputs:
       project_spn_id: ${{ steps.get_outputs.outputs.SPN_ID }}
     
-    # Require manual approval via the GitHub Environment before any apply.
-    # Configure reviewers under Settings → Environments → production.
+    # Deploy is manual-only (workflow_dispatch is the sole trigger). A required-reviewer
+    # gate on this `production` environment needs GitHub Pro+ for private repos; until
+    # then the safety control is that the workflow only ever runs when launched by hand.
     environment: production
 
     env:
