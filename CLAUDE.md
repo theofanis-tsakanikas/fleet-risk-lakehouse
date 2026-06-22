@@ -26,7 +26,7 @@ cp .env.example .env   # then edit .env — see Environment Variables table belo
 ```
 .
 ├── .github/workflows/
-│   ├── deploy-fleet-pipeline.yml     # Trigger: push to main — full apply + DABs deploy
+│   ├── deploy-fleet-pipeline.yml     # Trigger: manual (workflow_dispatch) — full apply + DABs deploy
 │   └── terraform-plan-pr.yml         # Trigger: pull_request — plan all 3 layers, post sticky comments
 ├── notebooks/
 │   ├── bronze/                        # Auto Loader ingestion (cloudFiles, CSV/JSON → Delta)
@@ -97,8 +97,10 @@ cp .env.example .env
 > **CI authentication is OIDC-based:** both GitHub workflows assume the IAM role in the
 > `AWS_DEPLOY_ROLE_ARN` repository secret via `aws-actions/configure-aws-credentials` —
 > no long-lived AWS keys are stored in GitHub. The role's trust policy must allow the
-> repository's GitHub OIDC provider. Deploy jobs additionally target the `production`
-> GitHub Environment, so a required-reviewer approval gates every apply.
+> repository's GitHub OIDC provider. The deploy workflow is **manual-only**
+> (`workflow_dispatch`) — it is never triggered on push, so a merge to `main` cannot
+> deploy infrastructure. (A required-reviewer gate on the `production` environment would
+> be the stronger control, but it requires GitHub Pro+ on private repos.)
 
 > **`TF_VAR_spn_client_id` and `TF_VAR_spn_client_secret` are never set manually.**
 > `terraform.sh` fetches them automatically from AWS Secrets Manager after layer `01_infra` has been applied — see [Terraform Secret Injection](#terraform-secret-injection) below.
