@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0] - 2026-05-31
 
-Initial public baseline of the Real-Time IoT Fleet Analytics platform.
+Initial public baseline of the Fleet Risk Lakehouse platform.
 
 ### Added
 - Medallion data pipeline on Databricks: Bronze (Auto Loader ingestion of CSV trackers and JSON watches), Silver (type casting, deduplication, outlier filtering), and Gold (temporal join, safety metrics, alerts).
@@ -37,5 +37,5 @@ Initial public baseline of the Real-Time IoT Fleet Analytics platform.
 - GitHub Actions `deploy-fleet-pipeline.yml`: full Terraform apply and DABs deploy on push to `main`.
 - MIT License.
 
-[Unreleased]: https://github.com/theofanis-tsakanikas/databricks-fleet-dabs-orchestration/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/theofanis-tsakanikas/databricks-fleet-dabs-orchestration/releases/tag/v0.1.0
+[Unreleased]: https://github.com/theofanis-tsakanikas/fleet-risk-lakehouse/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/theofanis-tsakanikas/fleet-risk-lakehouse/releases/tag/v0.1.0

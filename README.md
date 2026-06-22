@@ -1,12 +1,12 @@
 <div style="background-color:#fff8e7; color:#2b2b2b; padding:20px; border-radius:10px;">
 
-# 🚛 Real-Time IoT Fleet Analytics: End-to-End Medallion Architecture on Databricks & AWS
+# 🚛 Fleet Risk Lakehouse — Real-Time Driver-Risk Analytics on Databricks & AWS
 **An Enterprise-Grade Data Platform orchestrated by Terraform & GitHub Actions**
 
 ![project_cover_with_title](./images/project_cover_with_title.png)
 
-[![CI](https://github.com/theofanis-tsakanikas/databricks-fleet-dabs-orchestration/actions/workflows/deploy-fleet-pipeline.yml/badge.svg)](https://github.com/theofanis-tsakanikas/databricks-fleet-dabs-orchestration/actions/workflows/deploy-fleet-pipeline.yml)
-[![CI - Local Test Suite](https://github.com/theofanis-tsakanikas/databricks-fleet-dabs-orchestration/actions/workflows/ci.yml/badge.svg)](https://github.com/theofanis-tsakanikas/databricks-fleet-dabs-orchestration/actions/workflows/ci.yml)
+[![CI](https://github.com/theofanis-tsakanikas/fleet-risk-lakehouse/actions/workflows/deploy-fleet-pipeline.yml/badge.svg)](https://github.com/theofanis-tsakanikas/fleet-risk-lakehouse/actions/workflows/deploy-fleet-pipeline.yml)
+[![CI - Local Test Suite](https://github.com/theofanis-tsakanikas/fleet-risk-lakehouse/actions/workflows/ci.yml/badge.svg)](https://github.com/theofanis-tsakanikas/fleet-risk-lakehouse/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Databricks](https://img.shields.io/badge/Databricks-FF3621?logo=databricks&logoColor=white)](https://www.databricks.com/)
 [![AWS](https://img.shields.io/badge/AWS-232F3E?logo=amazonwebservices&logoColor=white)](https://aws.amazon.com/)
@@ -76,7 +76,7 @@ portfolio/
 ├── .github/workflows/
 │   └── deploy-fleet-pipeline.yml    # Multi-stage CI/CD Orchestration
 └── projects/
-    └── databricks-fleet-dabs-orchestration/
+    └── fleet-risk-lakehouse/
         ├── terraform/
         │   ├── 01_infra/           # Foundation: S3, IAM, Service Principals
         │   ├── 02_workspace/       # Databricks Workspace & Secrets Config
