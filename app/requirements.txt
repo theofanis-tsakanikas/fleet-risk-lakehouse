@@ -3,7 +3,7 @@
 # light, self-contained footprint (no Spark / Databricks Connect needed).
 
 streamlit>=1.40
-pandas>=2.0
+pandas>=3.0.3
 plotly>=5.20
 pydeck>=0.9
 
