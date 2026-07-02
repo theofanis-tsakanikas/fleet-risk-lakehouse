@@ -12,6 +12,6 @@
 # REQUIRES: Java 17 (JDK) on PATH / JAVA_HOME for the local Spark session.
 # ==============================================================================
 
-pyspark==3.5.3
+pyspark==4.1.2
 pytest==8.3.4
 ruff==0.8.4
