@@ -87,16 +87,12 @@ def _enriched_view(spark, rows, name="enriched"):
 
 
 def _run_live_status(spark, name):
-    """Execute the production live_status query under OSS Spark.
+    """Execute the production live_status query, verbatim, under OSS Spark.
 
-    Open-source Spark cannot parse Databricks' ``SELECT * EXCEPT(col)`` extension,
-    so we run the *identical* query with only that projection token relaxed and
-    drop ``rn`` in the DataFrame API. The ROW_NUMBER window — the substantive
-    dedup logic — is exercised unchanged. See test_live_status_uses_* for a static
-    lock on the real Databricks-flavored string.
+    The projection enumerates the classified Gold contract columns (no Databricks
+    ``* EXCEPT`` extension), so the exact production SQL runs locally.
     """
-    sql = live_status_select_sql(name).replace("* EXCEPT(rn)", "*")
-    return spark.sql(sql).drop("rn")
+    return spark.sql(live_status_select_sql(name))
 
 
 # --------------------------------------------------------------------------- #
@@ -181,10 +177,16 @@ def test_live_status_keeps_latest_per_driver(spark):
     assert "rn" not in _run_live_status(spark, name).columns
 
 
-def test_live_status_uses_databricks_except_projection():
-    # Static lock on the production (Databricks-flavored) SQL string.
+def test_live_status_projects_exactly_the_classified_contract():
+    # Static lock on the production SQL string: the projection is the classified
+    # Gold contract (GOLD_COLUMNS), enumerated — never `*`, never an extra column.
+    from fleet_governance.classification import GOLD_COLUMNS
+
     sql = live_status_select_sql("fleet_enriched_view")
-    assert "SELECT * EXCEPT(rn)" in sql
+    for col in GOLD_COLUMNS:
+        assert col in sql
+    assert "SELECT *," in sql  # only the inner ROW_NUMBER subquery selects *
+    assert "* EXCEPT" not in sql  # portable SQL — runs verbatim on OSS Spark
     assert "ROW_NUMBER() OVER (PARTITION BY driver_id ORDER BY timestamp DESC)" in sql
     assert "WHERE rn = 1" in sql
 

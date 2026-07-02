@@ -12,6 +12,7 @@ and documented — from the code, gated in CI.
 |---|---|---|
 | **Explainable risk score** | `src/fleet_transforms/risk_model.py` | The risk index is a single source of truth (weights, normalisers, cap, thresholds). The Gold view emits each factor's point contribution + `risk_primary_factor`, so a high-risk driver is *explained*, not just flagged. |
 | **Biometric data classification** | `src/fleet_governance/classification.py` | Every Gold column is tagged (identifier / special-category / location / operational / derived). Heart rate + stress are flagged GDPR Art. 9. A CI test asserts the classification matches the live Gold schema — an unclassified column fails the build. |
+| **Enforced column masking** | `src/fleet_governance/masking.py` | The classification doesn't just document the obligation — UC column masks enforce it: biometrics are NULLed and location is coarsened for anyone outside the `fleet_safety_officers` group. The masked set is derived from the classification, so it can't drift — and it covers **every** Gold surface carrying the data: the live table, the alerts log, the DQ **quarantine** side table, and the per-driver **aggregates** (aggregation does not de-identify). See [ADR-007](../adr/ADR-007-column-masking.md). |
 | **Generated documentation** | `src/fleet_governance/generate.py` | [RISK_MODEL_CARD.md](RISK_MODEL_CARD.md) and [DATA_PROCESSING_RECORD.md](DATA_PROCESSING_RECORD.md), rendered from the model + classification. CI fails if they drift (`--check`). |
 
 ## Why the risk score is a transparent index, not a learned model

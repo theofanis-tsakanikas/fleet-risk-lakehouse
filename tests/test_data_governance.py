@@ -81,6 +81,27 @@ def test_derived_columns_not_personal():
         assert not idx[col].is_personal
 
 
+def test_metrics_classification_matches_live_metrics_columns(spark):
+    # Lock the aggregate contract too: the columns safety_metrics_select_sql actually
+    # produces must all be classified (and none stale) in METRICS_COLUMN_CLASSES.
+    from fleet_transforms.gold import safety_metrics_select_sql
+
+    _enriched_columns(spark)  # registers t_s / w_s and validates the enriched view
+    spark.sql("CREATE OR REPLACE TEMPORARY VIEW gov_enriched AS" + enriched_view_select_sql("t_s", "w_s"))
+    cols = spark.sql(safety_metrics_select_sql("gov_enriched")).columns
+    errors = classification.validate_metrics_classification(cols)
+    assert errors == [], f"metrics classification out of sync: {errors}"
+
+
+def test_aggregates_inherit_special_category():
+    # Per-driver aggregation does not de-identify: Art. 9 handling flows through.
+    midx = classification.metrics_classification_index()
+    assert midx["avg_heart_rate"].is_special_category
+    assert midx["avg_stress"].is_special_category
+    assert not midx["max_speed"].is_personal
+    assert not midx["avg_risk_score"].is_personal
+
+
 # --------------------------------------------------------------------------- #
 # generated docs
 # --------------------------------------------------------------------------- #
@@ -91,6 +112,17 @@ def test_processing_record_lists_special_category():
     assert "Art. 30" in doc
     assert "heart_rate" in doc and "stress_score" in doc
     assert "Art. 9" in doc
+
+
+def test_processing_record_documents_enforced_masking():
+    doc = generate.render_processing_record()
+    assert "column mask" in doc.lower()  # masking is described as a safeguard/measure
+    assert "fleet_safety_officers" in doc  # the privileged group is named
+    # Every masked column is listed in the record (generated from the classification).
+    from fleet_governance.masking import masked_columns
+
+    for col in masked_columns():
+        assert col in doc
 
 
 def test_model_card_documents_transparent_index():
