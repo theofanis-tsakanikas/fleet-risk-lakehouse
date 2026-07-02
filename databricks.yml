@@ -66,6 +66,15 @@ variables:
     default: "metadata"
   gold_checkpoint_volume:
     default: "checkpoints"
+  dim_driver_table:
+    default: "dim_driver"
+  # Account group whose members see UNMASKED biometric / precise-location values.
+  mask_privileged_group:
+    default: "fleet_safety_officers"
+  # Real-data replay job trigger: PAUSED by default (serverless cost control) —
+  # set to UNPAUSED to run the pipeline continuously every 30 minutes.
+  replay_pause_status:
+    default: "PAUSED"
 
 # --- TARGET ENVIRONMENTS ---
 targets:
@@ -156,7 +165,7 @@ resources:
           environment_key: "fleet_runtime"
           notebook_task:
             notebook_path: ./notebooks/bronze/bronze_trackers.py
-            base_parameters:
+            base_parameters: &bronze_trackers_params
               TRACKERS_CATALOG: ${var.trackers_catalog}
               TRACKERS_BRONZE_SCHEMA: ${var.trackers_bronze_schema}
               TRACKERS_BRONZE_VOLUME: ${var.trackers_bronze_volume}
@@ -170,7 +179,7 @@ resources:
           environment_key: "fleet_runtime"
           notebook_task:
             notebook_path: ./notebooks/bronze/bronze_watches.py
-            base_parameters:
+            base_parameters: &bronze_watches_params
               WATCHES_CATALOG: ${var.watches_catalog}
               WATCHES_BRONZE_SCHEMA: ${var.watches_bronze_schema}
               WATCHES_BRONZE_VOLUME: ${var.watches_bronze_volume}
@@ -184,7 +193,8 @@ resources:
         # Cleaning, Deduplication, and Schema Enforcement.
         # ----------------------------------------------------------------------
 
-        - task_key: "silver_trackers"
+        - &silver_trackers_task
+          task_key: "silver_trackers"
           depends_on:
             - task_key: "bronze_trackers"
           environment_key: "fleet_runtime"
@@ -199,7 +209,8 @@ resources:
               TRACKERS_METADATA_SCHEMA: ${var.trackers_metadata_schema}
               TRACKERS_CHECKPOINT_VOLUME: ${var.trackers_checkpoint_volume}
 
-        - task_key: "silver_watches"
+        - &silver_watches_task
+          task_key: "silver_watches"
           depends_on:
             - task_key: "bronze_watches"
           environment_key: "fleet_runtime"
@@ -220,7 +231,8 @@ resources:
         # Joining Trackers and Watches to calculate safety metrics.
         # ----------------------------------------------------------------------
 
-        - task_key: "gold_fleet_enrichment"
+        - &gold_enrichment_task
+          task_key: "gold_fleet_enrichment"
           depends_on:
             - task_key: "silver_trackers"
             - task_key: "silver_watches"
@@ -236,6 +248,8 @@ resources:
               GOLD_LIVE_TABLE: ${var.gold_live_table}
               GOLD_METRICS_TABLE: ${var.gold_metrics_table}
               GOLD_ALERTS_TABLE: ${var.gold_alerts_table}
+              # Governance: group that sees unmasked biometric / precise-location values
+              MASK_PRIVILEGED_GROUP: ${var.mask_privileged_group}
               # Source Silver Metadata (for dynamic SQL joining)
               WATCHES_CATALOG: ${var.watches_catalog}
               WATCHES_SILVER_SCHEMA: ${var.watches_silver_schema}
@@ -244,12 +258,113 @@ resources:
               TRACKERS_SILVER_SCHEMA: ${var.trackers_silver_schema}
               TRACKERS_SILVER_TABLE: ${var.trackers_silver_table}
 
+        # ----------------------------------------------------------------------
+        # STAGE 3b: DRIVER DIMENSION (SCD Type 2)
+        # ----------------------------------------------------------------------
+        # Versions each driver→truck assignment over time. Reads Silver trackers;
+        # runs in parallel with the Gold enrichment (both depend only on Silver).
+        # ----------------------------------------------------------------------
+
+        - &dim_driver_task
+          task_key: "build_dim_driver"
+          depends_on:
+            - task_key: "silver_trackers"
+          environment_key: "fleet_runtime"
+          notebook_task:
+            notebook_path: ./notebooks/gold/gold_dim_driver.py
+            base_parameters:
+              GOLD_CATALOG: ${var.gold_catalog}
+              GOLD_SCHEMA: ${var.gold_schema}
+              DIM_DRIVER_TABLE: ${var.dim_driver_table}
+              TRACKERS_CATALOG: ${var.trackers_catalog}
+              TRACKERS_SILVER_SCHEMA: ${var.trackers_silver_schema}
+              TRACKERS_SILVER_TABLE: ${var.trackers_silver_table}
+
       # --- SHARED ENVIRONMENT ---
       # Definitions of the compute/runtime environment used by the tasks.
-      environments:
+      environments: &fleet_environments
         - environment_key: "fleet_runtime"
           spec:
             environment_version: "2"
+
+    # ==========================================================================
+    # 🌍 REAL-DATA REPLAY JOB (VED trips → the same medallion DAG)
+    # ==========================================================================
+    # Replays real vehicle telemetry (data/ved/ved_sample.csv — see data/ved/
+    # README.md) through the exact Bronze/Silver/Gold contract the mock job uses.
+    # Both replay tasks receive the same {{job.start_time.iso_datetime}} anchor,
+    # so the two streams align tick-for-tick inside the Gold ±60s join window.
+    # A periodic trigger (PAUSED by default — flip var.replay_pause_status to
+    # UNPAUSED) turns the lakehouse into a continuously refreshing system.
+    # ==========================================================================
+    fleet_replay_job:
+      name: "Fleet Monitoring: Real-Data Replay Pipeline (VED)"
+
+      queue:
+        enabled: true
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
+
+      trigger:
+        pause_status: ${var.replay_pause_status}
+        periodic:
+          interval: 30
+          unit: MINUTES
+
+      tasks:
+        - task_key: "replay_trackers"
+          environment_key: "fleet_runtime"
+          spark_python_task:
+            python_file: ./src/replay/producer_replay.py
+            parameters:
+              - "--stream"
+              - "trackers"
+              - "--anchor"
+              - "{{job.start_time.iso_datetime}}"
+              - "--out-dir"
+              - "data/temp/replay/trackers"
+              - "--volume-path"
+              - "/Volumes/${var.trackers_catalog}/${var.trackers_bronze_schema}/${var.trackers_bronze_volume}"
+
+        - task_key: "replay_watches"
+          environment_key: "fleet_runtime"
+          spark_python_task:
+            python_file: ./src/replay/producer_replay.py
+            parameters:
+              - "--stream"
+              - "watches"
+              - "--anchor"
+              - "{{job.start_time.iso_datetime}}"
+              - "--out-dir"
+              - "data/temp/replay/watches"
+              - "--volume-path"
+              - "/Volumes/${var.watches_catalog}/${var.watches_bronze_schema}/${var.watches_bronze_volume}"
+
+        # The medallion DAG below is identical to fleet_monitoring_job's — the
+        # bronze tasks re-declare only their upstream (replay instead of mock);
+        # silver/gold/dim are YAML aliases of the exact same task definitions.
+        - task_key: "bronze_trackers"
+          depends_on:
+            - task_key: "replay_trackers"
+          environment_key: "fleet_runtime"
+          notebook_task:
+            notebook_path: ./notebooks/bronze/bronze_trackers.py
+            base_parameters: *bronze_trackers_params
+
+        - task_key: "bronze_watches"
+          depends_on:
+            - task_key: "replay_watches"
+          environment_key: "fleet_runtime"
+          notebook_task:
+            notebook_path: ./notebooks/bronze/bronze_watches.py
+            base_parameters: *bronze_watches_params
+
+        - *silver_trackers_task
+        - *silver_watches_task
+        - *gold_enrichment_task
+        - *dim_driver_task
+
+      environments: *fleet_environments
 
 # --- SYNC SETTINGS ---
 # Defines which files are uploaded to the Databricks Workspace during 'bundle deploy'.
@@ -257,6 +372,7 @@ sync:
   include:
     - notebooks/**
     - src/**
+    - data/ved/ved_sample.csv
   exclude:
     - terraform/**
     - .env
