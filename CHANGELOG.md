@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Real-world data replay** (`src/replay/`, ADR-008): parses Vehicle Energy Dataset trips (committed real sample: 10 vehicles / 18 trips, Apache-2.0, `data/ved/`), pseudonymises them onto the fleet roster, rebases them onto a replay anchor, and emits both streams in the mock producers' exact schemas. Driver biometrics are simulated **conditioned on the real driving events** (hard braking detected in the raw trace, overspeed from `RISK_MODEL`), deterministic per seed. `scripts/fetch_ved.py` pulls the full dataset.
+- **`fleet_replay_job`** in the DABs bundle: the identical 8-task medallion DAG fed by real data (downstream tasks are YAML aliases of the monitoring job's), with a 30-minute periodic trigger — PAUSED by default (`var.replay_pause_status`) — for continuous operation.
+- **Masking coverage completed** (ADR-007 updated): UC column masks now also cover `fleet_live_status_quarantine` (DQ-failing rows are still raw Art. 9 biometrics) and the `driver_safety_metrics` aggregates (`avg_heart_rate` / `avg_stress` — per-driver aggregation does not de-identify), via a classified aggregate contract (`METRICS_COLUMN_CLASSES`) and typed mask-UDF variants (INT sources / DOUBLE aggregates). The generated Art. 30 record documents the aggregate table.
+- Sensor **null-rate observability**: the Gold notebook now records `heart_rate`/`stress_score`/`speed` null rates in `pipeline_metrics` (wearable dropout shows on the dashboard instead of silently degrading the score).
+- 18 new tests (138 total): replay parsing against the real sample, harsh-brake detection, biometric determinism/decay, tick-grid alignment, a real-data end-to-end (replayed trips → production Silver → non-empty Gold enriched view), aggregate/quarantine masking, and the aggregate classification contract.
+
+### Changed
+- `live_status_select_sql` now enumerates the classified Gold contract columns instead of Databricks-only `SELECT * EXCEPT(rn)` — the exact production SQL runs verbatim on OSS Spark (test hack removed).
+- `setup.sh` creates the **test** environment (`.venv` ← `requirements-dev.txt`); the conflicting Databricks Connect env is opt-in (`--connect` → `.venv-connect`) — following the documented setup then `make test` now works.
+- `terraform.sh` loads `.env` via `set -a; source` (handles quotes/spaces/comments); `bundle.sh` is target-aware (`BUNDLE_TARGET`, `BUNDLE_JOB_NAME`); S3 backends use `use_lockfile = true` (state locking); `databricks/setup-cli` pinned to a commit SHA; `requirements.txt` fully pinned (dead `databricks-cli`/`black` deps removed); bronze/silver notebooks reuse an existing `spark` session instead of always building a Connect session.
+
+### Fixed
+- Doc drift: task counts (7 → 8), `app/README.md` example schema (`gold` → `operations`), test counts, and the repo maps in `README.md`/`CLAUDE.md`.
 - `CLAUDE.md` engineering reference: environment variables, Terraform layer apply/destroy order, DABs commands, Grafana setup, and known gotchas.
 - Architecture Decision Records under `docs/adr/`:
   - ADR-001 — 3-layer Terraform with isolated remote state.

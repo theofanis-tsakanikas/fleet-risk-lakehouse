@@ -37,7 +37,7 @@ DATABRICKS_SERVER_HOSTNAME = "dbc-xxxx.cloud.databricks.com"
 DATABRICKS_HTTP_PATH       = "/sql/1.0/warehouses/xxxxxxxx"
 DATABRICKS_TOKEN           = "dapi..."
 GOLD_CATALOG               = "fleet_prod"
-GOLD_SCHEMA                = "gold"
+GOLD_SCHEMA                = "operations"
 ```
 
 Then pick **"Databricks SQL (live)"** in the sidebar. If credentials are

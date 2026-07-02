@@ -29,8 +29,7 @@ Catalog stay in the notebooks and are never executed by the tests.
 ## Setup & run
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements-dev.txt   # pyspark, pytest, ruff
+./setup.sh                                       # creates .venv from requirements-dev.txt
 .venv/bin/python -m pytest                       # run the suite
 .venv/bin/ruff check src tests notebooks         # lint
 ```
@@ -51,6 +50,9 @@ warehouse + Derby metastore at pytest tmp dirs using the in-memory catalog, so
 | `tests/test_silver_transforms.py` | Outlier nulling at sentinel boundaries, dedup, status trim/upper, ghost-driver / corrupted-ID pruning (local Spark) |
 | `tests/test_gold_transforms.py` | risk_score formula + cap + COALESCE, ±60s join window, ROW_NUMBER dedup vs alerts keep-all, ValueError DQ |
 | `tests/test_known_gotchas.py` | Regression tests for CLAUDE.md gotchas **1, 4, 6, 7** |
+| `tests/test_replay.py` | VED parsing (against the committed **real** sample), harsh-brake detection, event-conditioned biometrics (determinism, decay, Silver-validity), driver assignment/pseudonymisation, tick-grid alignment, and a real-data end-to-end: replayed trips → production Silver → non-empty Gold enriched view |
+| `tests/test_data_governance.py` | Classification ↔ live Gold schema (enriched **and** aggregate contracts), Art. 9 tagging, aggregate inheritance, generated-docs drift check |
+| `tests/test_masking.py` | Mask derivation from the classification, typed UDF variants (INT/DOUBLE), quarantine parity with live, aggregate masking |
 | `tests/test_infra_offline.py` | `terraform fmt -check` + `validate -backend=false` (no apply); `databricks bundle validate` (schema only) |
 
 ## Known Gotchas → tests
