@@ -18,6 +18,9 @@ terraform {
     key     = "dev/03-unity-catalog/terraform.tfstate"
     region  = "eu-central-1"
     encrypt = true
+    # S3-native state locking (Terraform >= 1.10) — prevents concurrent applies
+    # from corrupting this layer's state without needing a DynamoDB table.
+    use_lockfile = true
   }
 }
 

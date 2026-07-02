@@ -2,10 +2,17 @@
 # 🐍 Python & Virtual Environments
 # ==========================================
 .venv/
+.venv-connect/
 __pycache__/
 *.py[cod]
 *$py.class
 *.env
+
+# ==========================================
+# 📊 Data (local staging + full VED download; the committed sample stays tracked)
+# ==========================================
+data/temp/
+data/ved/full/
 
 # ==========================================
 # ☁️ Terraform (Local State & Credentials)
@@ -56,3 +63,8 @@ PRE-PUBLISH.md
 *.key
 *.p12
 *.pfx
+
+# ==========================================
+# 📣 LinkedIn post drafts + assets (local only, not part of the repo)
+# ==========================================
+LinkedIn/

@@ -16,9 +16,14 @@ fi
 
 # --- 📂 2. Load environment variables from .env ---
 if [ -f .env ]; then
-  # We ALWAYS export the variables so Terraform can access the backend (S3/Azure)
-  export $(grep -v '^#' .env | xargs)
-  
+  # We ALWAYS export the variables so Terraform can access the backend (S3/Azure).
+  # `set -a` + `source` handles quoted values, spaces and inline comments correctly
+  # (the old `export $(grep ... | xargs)` silently corrupted such values).
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+
   # But we ONLY print the message if we are NOT in output mode
   if [ "$ACTION" != "output" ]; then
     echo "✅ Loading environment variables from .env..."

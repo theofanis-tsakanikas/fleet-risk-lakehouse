@@ -25,7 +25,7 @@ variable "aws_region" {
 }
 
 variable "aws_account_id" {
-  description = "Your 12-digit AWS Account ID"
+  description = "Your 12-digit AWS Account ID (set via TF_VAR_aws_account_id; placeholder default)"
   type        = string
   default     = "123456789012"
 }

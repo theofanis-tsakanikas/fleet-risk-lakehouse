@@ -1,16 +1,24 @@
-# === ☁️ Cloud & Databricks SDKs ===
-databricks-sdk
-databricks-cli
-awscli
+# ==============================================================================
+# Databricks Connect environment (.venv-connect — created by `./setup.sh --connect`).
+#
+# NOT the test environment: databricks-connect shadows/conflicts with the plain
+# pyspark install the local test suite needs — that lives in requirements-dev.txt
+# and installs into .venv. Keep the two environments separate.
+#
+# The Databricks CLI itself is a standalone binary (https://docs.databricks.com/dev-tools/cli/),
+# installed by CI via databricks/setup-cli — it is not a pip dependency.
+# ==============================================================================
 
-# === 🛠️ Code Quality, Formatting & Testing ===
-black
-ruff
-pytest
-pre-commit
+# === ☁️ Cloud & Databricks SDKs ===
+databricks-sdk==0.119.0
+awscli==1.45.39
+
+# === 🛠️ Code Quality & Git hooks ===
+ruff==0.15.20
+pre-commit==4.6.0
 
 # === 🔌 Databricks Remote Connection ===
 databricks-connect==18.0.0
 
 # === ⚙️ Utilities & Configuration ===
-python-dotenv
+python-dotenv==1.2.2
