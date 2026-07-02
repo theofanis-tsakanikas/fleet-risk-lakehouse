@@ -20,6 +20,8 @@ point contributions (``risk_<factor>_pts``) and ``risk_primary_factor`` so a hig
 driver is explainable, not merely flagged.
 """
 
+from fleet_governance.classification import GOLD_COLUMNS
+from fleet_transforms.quality import Expectation, Severity
 from fleet_transforms.risk_model import RISK_MODEL
 
 # Qualified source expressions for each risk factor inside the enriched SELECT.
@@ -70,6 +72,10 @@ def live_status_select_sql(source: str) -> str:
 
     Keeps only the most recent enriched row per ``driver_id`` via
     ``ROW_NUMBER() ... ORDER BY timestamp DESC``; ``risk_score`` flows through.
+    The projected columns are enumerated from the classified Gold contract
+    (:data:`fleet_governance.classification.GOLD_COLUMNS`) rather than
+    ``SELECT * EXCEPT(rn)`` — portable to OSS Spark (tests) and impossible to
+    emit a column the classification doesn't know about.
 
     Args:
         source: The enriched-view identifier to read from.
@@ -77,8 +83,11 @@ def live_status_select_sql(source: str) -> str:
     Returns:
         The SQL ``SELECT`` body (no surrounding DDL).
     """
+    cols = ",\n    ".join(GOLD_COLUMNS)
     return f"""
-SELECT * EXCEPT(rn) FROM (
+SELECT
+    {cols}
+FROM (
     SELECT *, ROW_NUMBER() OVER (PARTITION BY driver_id ORDER BY timestamp DESC) as rn
     FROM {source}
 ) WHERE rn = 1
@@ -147,6 +156,43 @@ FROM {source}
 WHERE speed > {overspeed} OR heart_rate > {hr_warn}
 ORDER BY timestamp DESC
 """
+
+
+def live_status_expectations() -> list[Expectation]:
+    """The declarative DQ suite for ``fleet_live_status`` (built from :data:`RISK_MODEL`).
+
+    Replaces the hand-rolled inline ``COUNT(*) ... raise`` checks the Gold notebook used to
+    carry. The bounds (``0 ≤ risk_score ≤ cap``) come from the risk model, so the suite can
+    never drift from the formula. Rows violating an ``ERROR`` expectation are quarantined to
+    a side table rather than crashing the run blind; :func:`fleet_transforms.quality.enforce`
+    then fails the run if any ERROR expectation was breached.
+    """
+    return [
+        Expectation(
+            "driver_id_not_null",
+            "driver_id IS NOT NULL",
+            Severity.ERROR,
+            "Every live-status row must identify a driver.",
+        ),
+        Expectation(
+            "timestamp_not_null",
+            "timestamp IS NOT NULL",
+            Severity.ERROR,
+            "Every live-status row must be time-stamped.",
+        ),
+        Expectation(
+            "risk_score_in_range",
+            f"risk_score IS NOT NULL AND risk_score BETWEEN 0 AND {RISK_MODEL.cap:g}",
+            Severity.ERROR,
+            f"risk_score must be a number within [0, {RISK_MODEL.cap:g}] (COALESCE handling).",
+        ),
+        Expectation(
+            "primary_factor_known",
+            "risk_primary_factor IS NOT NULL AND risk_primary_factor <> ''",
+            Severity.WARN,
+            "Each row should name the factor that drove its score (explainability).",
+        ),
+    ]
 
 
 def check_enriched_not_empty(view_count: int) -> None:

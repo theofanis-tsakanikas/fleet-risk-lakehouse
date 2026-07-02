@@ -107,10 +107,7 @@ def test_gotcha_7_multiple_matches_dedup_vs_keep_all(spark):
     enriched = _enrich(spark, trackers, [("DRV_01", watch_ts, 95, 40)])
     assert enriched.count() == 2  # both tracker events fall inside ±60s
 
-    # OSS Spark can't parse Databricks' `SELECT * EXCEPT(rn)`; relax only that
-    # projection token and drop rn afterwards — the ROW_NUMBER dedup is unchanged.
-    live_sql = live_status_select_sql("g_enriched").replace("* EXCEPT(rn)", "*")
-    live = spark.sql(live_sql).drop("rn").collect()
+    live = spark.sql(live_status_select_sql("g_enriched")).collect()
     assert len(live) == 1
     assert live[0].timestamp == watch_ts + dt.timedelta(seconds=50)  # most recent
 

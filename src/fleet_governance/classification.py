@@ -35,6 +35,7 @@ class ColumnClass:
     description: str
     retention: str = ""  # retention for personal-data columns
     gdpr_note: str = ""
+    sql_type: str = ""  # Spark SQL type — lets the mask builders pick a type-correct UDF
 
     @property
     def is_personal(self) -> bool:
@@ -53,15 +54,17 @@ COLUMN_CLASSES: tuple[ColumnClass, ...] = (
         "Pseudonymised driver identifier (no name / direct identifier).",
         retention="Operational + 90 days",
         gdpr_note="Indirect identifier; pseudonymised at source (no PII in the lakehouse).",
+        sql_type="STRING",
     ),
-    ColumnClass("truck_id", IDENTIFIER, "Vehicle identifier.", retention="Operational + 90 days"),
-    ColumnClass("timestamp", OPERATIONAL, "Event time of the correlated reading."),
+    ColumnClass("truck_id", IDENTIFIER, "Vehicle identifier.", retention="Operational + 90 days", sql_type="STRING"),
+    ColumnClass("timestamp", OPERATIONAL, "Event time of the correlated reading.", sql_type="TIMESTAMP"),
     ColumnClass(
         "latitude",
         LOCATION,
         "Vehicle latitude at the reading.",
         retention="30 days (then aggregated)",
         gdpr_note="Location of an identified driver — personal data; minimise retention.",
+        sql_type="DOUBLE",
     ),
     ColumnClass(
         "longitude",
@@ -69,15 +72,17 @@ COLUMN_CLASSES: tuple[ColumnClass, ...] = (
         "Vehicle longitude at the reading.",
         retention="30 days (then aggregated)",
         gdpr_note="Location of an identified driver — personal data; minimise retention.",
+        sql_type="DOUBLE",
     ),
-    ColumnClass("speed", OPERATIONAL, "Vehicle speed (km/h)."),
-    ColumnClass("fuel_level", OPERATIONAL, "Vehicle fuel level."),
+    ColumnClass("speed", OPERATIONAL, "Vehicle speed (km/h).", sql_type="INT"),
+    ColumnClass("fuel_level", OPERATIONAL, "Vehicle fuel level.", sql_type="INT"),
     ColumnClass(
         "heart_rate",
         SPECIAL_CATEGORY,
         "Driver heart rate (bpm) from the wearable.",
         retention="30 days",
         gdpr_note="Health data (GDPR Art. 9) — processed for driver safety with explicit safeguards.",
+        sql_type="INT",
     ),
     ColumnClass(
         "stress_score",
@@ -85,12 +90,15 @@ COLUMN_CLASSES: tuple[ColumnClass, ...] = (
         "Driver stress score from the wearable.",
         retention="30 days",
         gdpr_note="Health-derived data (GDPR Art. 9) — processed for driver safety with safeguards.",
+        sql_type="INT",
     ),
-    ColumnClass("risk_score", DERIVED, "Composite driver risk index (0–100)."),
-    ColumnClass("risk_speed_pts", DERIVED, "Risk points contributed by speed (explainability)."),
-    ColumnClass("risk_stress_pts", DERIVED, "Risk points contributed by stress (explainability)."),
-    ColumnClass("risk_heart_rate_pts", DERIVED, "Risk points contributed by heart rate (explainability)."),
-    ColumnClass("risk_primary_factor", DERIVED, "The factor that drove the risk score."),
+    ColumnClass("risk_score", DERIVED, "Composite driver risk index (0–100).", sql_type="DOUBLE"),
+    ColumnClass("risk_speed_pts", DERIVED, "Risk points contributed by speed (explainability).", sql_type="DOUBLE"),
+    ColumnClass("risk_stress_pts", DERIVED, "Risk points contributed by stress (explainability).", sql_type="DOUBLE"),
+    ColumnClass(
+        "risk_heart_rate_pts", DERIVED, "Risk points contributed by heart rate (explainability).", sql_type="DOUBLE"
+    ),
+    ColumnClass("risk_primary_factor", DERIVED, "The factor that drove the risk score.", sql_type="STRING"),
 )
 
 # The columns the enriched Gold view is expected to emit (the contract a test locks).
@@ -99,6 +107,61 @@ GOLD_COLUMNS: tuple[str, ...] = tuple(c.column for c in COLUMN_CLASSES)
 
 def classification_index() -> dict[str, ColumnClass]:
     return {c.column: c for c in COLUMN_CLASSES}
+
+
+# --------------------------------------------------------------------------- #
+# driver_safety_metrics (the aggregate Gold table)
+# --------------------------------------------------------------------------- #
+# Aggregation does NOT de-identify: an hourly average heart rate keyed by driver_id
+# is still the health data of one identified driver (GDPR Art. 9). Each aggregate
+# therefore inherits its source column's category — derived here from the enriched
+# classification, never hand-tagged, so the two tables can't drift apart.
+
+# (aggregate column, source column, sql type, description)
+_METRIC_AGGREGATES: tuple[tuple[str, str, str, str], ...] = (
+    ("avg_heart_rate", "heart_rate", "DOUBLE", "Hourly average driver heart rate (bpm)."),
+    ("max_speed", "speed", "INT", "Hourly maximum vehicle speed (km/h)."),
+    ("avg_stress", "stress_score", "DOUBLE", "Hourly average driver stress score."),
+    ("avg_risk_score", "risk_score", "DOUBLE", "Hourly average composite risk score."),
+    ("max_risk_score", "risk_score", "DOUBLE", "Hourly maximum composite risk score."),
+)
+
+
+def _aggregate_class(column: str, source: str, sql_type: str, description: str) -> ColumnClass:
+    src = classification_index()[source]
+    note = src.gdpr_note
+    if src.is_personal:
+        note = f"Aggregate of `{source}` — per-driver aggregation does not de-identify; inherits its handling."
+    return ColumnClass(column, src.category, description, retention=src.retention, gdpr_note=note, sql_type=sql_type)
+
+
+# The classification of the driver_safety_metrics table (the aggregate contract).
+METRICS_COLUMN_CLASSES: tuple[ColumnClass, ...] = (
+    classification_index()["driver_id"],
+    ColumnClass("hour_bucket", OPERATIONAL, "Start of the hourly aggregation window.", sql_type="TIMESTAMP"),
+    *(_aggregate_class(*spec) for spec in _METRIC_AGGREGATES),
+)
+
+METRICS_COLUMNS: tuple[str, ...] = tuple(c.column for c in METRICS_COLUMN_CLASSES)
+
+
+def metrics_classification_index() -> dict[str, ColumnClass]:
+    return {c.column: c for c in METRICS_COLUMN_CLASSES}
+
+
+def validate_metrics_classification(actual_columns: list[str]) -> list[str]:
+    """Return governance errors comparing the live metrics columns to the classification.
+
+    Same contract as :func:`validate_classification`, for ``driver_safety_metrics``.
+    """
+    classified = set(metrics_classification_index())
+    actual = set(actual_columns)
+    errors = []
+    for col in sorted(actual - classified):
+        errors.append(f"unclassified driver_safety_metrics column: {col!r} (add it to _METRIC_AGGREGATES)")
+    for col in sorted(classified - actual):
+        errors.append(f"classified column no longer in driver_safety_metrics: {col!r}")
+    return errors
 
 
 def special_category_columns() -> tuple[str, ...]:
