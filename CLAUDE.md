@@ -3,7 +3,9 @@
 ## Quick Start
 
 ```bash
-# 1. Bootstrap local environment (creates .venv, installs deps, copies .env template)
+# 1. Bootstrap local environment (creates the .venv TEST env from requirements-dev.txt
+#    + copies the .env template). Add --connect for a separate .venv-connect with
+#    databricks-connect — the two must never share an env (connect conflicts with pyspark).
 ./setup.sh
 
 # 2. Fill in credentials
@@ -21,6 +23,33 @@ cp .env.example .env   # then edit .env — see Environment Variables table belo
 
 ---
 
+## Make targets (the front door)
+
+A [Makefile](Makefile) wraps the tooling in one discoverable interface — run `make help` to
+list everything. It does **not** replace the shell scripts: the heavy logic (multi-layer
+Terraform ordering, SPN secret injection, DABs host/SPN resolution) stays in
+`terraform.sh` / `bundle.sh` / `setup.sh`, which the GitHub workflows also call; `make`
+just gives them a uniform front door and bundles the quality gates.
+
+```bash
+make help                       # list all targets
+make setup                      # ./setup.sh  (venv + .env)
+make check                      # run every gate the CI runs: lint + fmt-check + test + govern-check
+make test | lint | fmt | govern-docs
+make plan LAYER=01_infra        # ./terraform.sh 01_infra plan   (also apply/destroy/output/tf-fmt)
+make infra-up                   # apply all 3 layers in the mandatory order (01 → 02 → 03)
+make infra-down                 # destroy in reverse order (03 → 02 → 01)
+make deploy | run | validate    # ./bundle.sh <action>
+```
+
+The four CI gate steps in [ci.yml](.github/workflows/ci.yml) call `make lint|fmt-check|test|
+govern-check` (with `PYTHON=python`), so the gate commands are defined in exactly one place
+and `make check` reproduces CI locally. The Makefile defaults `PYTHON` to `.venv/bin/python`
+(its `python` symlink works even though the venv's `pip` shebang is stale — use
+`$(PYTHON) -m pip`).
+
+---
+
 ## Repo Map
 
 ```
@@ -35,20 +64,37 @@ cp .env.example .env   # then edit .env — see Environment Variables table belo
 │   ├── silver/                        # Type casting, deduplication, outlier filtering
 │   │   ├── silver_trackers.py
 │   │   └── silver_watches.py
-│   └── gold/                          # Temporal join, risk scoring, 3 business Gold tables
-│       └── gold_fleet_monitoring_enrichment.py
+│   └── gold/                          # Temporal join, risk scoring, 3 business Gold tables + SCD2 dim
+│       ├── gold_fleet_monitoring_enrichment.py  # Enrich + DQ suite + masking + drift + metrics
+│       └── gold_dim_driver.py         # SCD Type 2 driver→truck assignment dimension
 ├── src/fleet_transforms/              # Pure, unit-tested transform logic (no Spark session / I/O)
 │   ├── silver.py                      # Silver cleansing rules (trackers + watches)
-│   ├── gold.py                        # Gold SQL builders (temporal join, risk, explainability) + DQ guard
-│   └── risk_model.py                  # RISK_MODEL — single source of truth for the score + its explanation
+│   ├── gold.py                        # Gold SQL builders (temporal join, risk, explainability) + DQ suite
+│   ├── risk_model.py                  # RISK_MODEL — single source of truth for the score + its explanation
+│   ├── quality.py                     # Declarative DQ framework (Expectation/Severity, evaluate/split/enforce)
+│   ├── observability.py               # pipeline_metrics builders (row counts, join match rate, null rates)
+│   ├── dimensions.py                  # SCD2 reference (apply_scd2) + Delta MERGE builder
+│   └── drift.py                       # Risk-score distribution drift (PSI over risk bands)
 ├── src/fleet_governance/              # Offline governance: column classification + generated docs
 │   ├── classification.py              # Gold column classification (biometrics = GDPR Art. 9 special category)
+│   ├── masking.py                     # Enforced UC column masks (biometrics + location), derived from classification
 │   └── generate.py                    # Generates docs/governance/ (risk model card + GDPR Art. 30 record)
 ├── src/mock_generator/                # Python IoT simulators (CSV trackers, JSON watches)
 │   ├── fleet_config.json              # 10 driver / truck / watch device mappings
 │   ├── producer_trackers.py
 │   └── producer_watches.py
+├── src/replay/                        # Real-data replay (VED trips → the same Bronze contract)
+│   ├── ved.py                         # VED CSV parsing + trip normalisation/resampling
+│   ├── biometrics.py                  # Biometrics conditioned on real hard-braking/overspeed events
+│   ├── replay.py                      # Driver assignment, timeline rebasing, event emission
+│   └── producer_replay.py             # CLI/job entry point (batch files → Volume/S3)
+├── data/ved/                          # Committed REAL sample (10 vehicles, 18 trips) + attribution README
+├── scripts/fetch_ved.py               # Pull the full VED dataset into data/ved/full/ (gitignored)
 ├── docs/governance/                   # Generated: RISK_MODEL_CARD.md + DATA_PROCESSING_RECORD.md (CI --check)
+├── docs/adr/                          # ADR-001..008 (layered state, join window, BI, micro-batch, DQ, SCD2, masking, replay)
+├── docs/architecture.md               # Mermaid diagrams (data flow, Gold gates, Terraform layers)
+├── docs/RUNBOOK.md                    # Ops: latency/cost, observability, incidents, recovery
+├── docs/SCALING.md                    # What changes (and doesn't) from 10 → 10,000 drivers
 ├── terraform/
 │   ├── 01_infra/                      # AWS: S3, IAM, Secrets Manager, SPN, Metastore, Workspace
 │   ├── 02_workspace/                  # Databricks: SQL Warehouse, metastore-level grants
@@ -60,7 +106,8 @@ cp .env.example .env   # then edit .env — see Environment Variables table belo
 │       ├── databricks_workspace/      # Workspace resource + NCC
 │       ├── databricks_workspace_config/  # SQL Warehouse + grants
 │       └── databricks_unity_catalog/  # Storage credentials, external locations, catalogs, schemas, volumes
-├── databricks.yml                     # DABs bundle definition: 7-task job, variables, sync rules
+├── databricks.yml                     # DABs bundle: 2 jobs × 8 tasks (mock + real-data replay), variables, sync
+├── Makefile                           # Front door: `make help` — wraps the 3 scripts + bundles the CI gates
 ├── terraform.sh                       # Multi-layer Terraform orchestrator with automatic secret injection
 ├── bundle.sh                          # DABs wrapper: resolves host/SPN from Terraform or env vars
 └── setup.sh                           # One-time local dev bootstrapper (venv + .env creation)
@@ -190,15 +237,27 @@ causing an authentication failure at Terraform's provider initialization — not
 - **CI/CD path:** These are injected as environment variables by the GitHub Actions workflow.
 - **Local path:** The script calls `./terraform.sh 01_infra output -raw` to read them from Terraform state.
 
-The bundle deploys to the `dev` target defined in `databricks.yml`. The job DAG runs 7 tasks:
+The bundle deploys to the `dev` target defined in `databricks.yml` (override with
+`BUNDLE_TARGET=prod`). It defines **two jobs** with the identical 8-task medallion DAG:
 
 ```
-generate_mock_trackers ──► bronze_trackers ──► silver_trackers ──┐
-                                                                   ├──► gold_fleet_enrichment
-generate_mock_watches  ──► bronze_watches  ──► silver_watches  ──┘
+generate_mock_trackers ──► bronze_trackers ──► silver_trackers ──┬──► gold_fleet_enrichment
+                                                                  └──► build_dim_driver
+generate_mock_watches  ──► bronze_watches  ──► silver_watches  ──────► gold_fleet_enrichment
 ```
 
-Bronze and Silver for each stream run in parallel. Gold waits for both Silver tasks to complete.
+- `fleet_monitoring_job` — mock generators (dirty-data injection), manual trigger.
+- `fleet_replay_job` — `replay_trackers` / `replay_watches` stream **real VED trips**
+  (see [ADR-008](docs/adr/ADR-008-real-data-replay.md)); both tasks get the same
+  `{{job.start_time.iso_datetime}}` anchor so the streams align inside the ±60s join
+  window. It carries a 30-minute periodic trigger, **PAUSED by default**
+  (`var.replay_pause_status: UNPAUSED` enables continuous operation). Run it manually
+  with `BUNDLE_JOB_NAME=fleet_replay_job ./bundle.sh run`.
+
+Bronze and Silver for each stream run in parallel. `gold_fleet_enrichment` waits for both
+Silver tasks; `build_dim_driver` (the SCD2 driver dimension) depends only on `silver_trackers`
+and runs in parallel with Gold enrichment. The downstream tasks of the two jobs are YAML
+aliases of the same definitions — they cannot drift apart.
 
 ### DABs Variables
 
@@ -265,6 +324,34 @@ danger threshold). See [ADR-002](docs/adr/ADR-002-temporal-join-window.md) and
 > unclassified. See [docs/governance/](docs/governance/README.md) (risk model card + GDPR
 > Art. 30 processing record, both generated from the code).
 
+### Gold-layer quality, governance & observability (beyond the joins)
+
+The `gold_fleet_enrichment` task wraps the enrichment with four cross-cutting concerns, each
+backed by a pure, unit-tested module under `src/` (the notebook only orchestrates):
+
+- **Declarative data quality** (`quality.py` + `gold.live_status_expectations`): named SQL
+  predicates with `ERROR`/`WARN` severities. `fleet_live_status` rows that violate an `ERROR`
+  expectation are **quarantined** to `fleet_live_status_quarantine` (annotated with
+  `_dq_failures`), not silently dropped; the run fails only if an `ERROR` expectation breached.
+  See [ADR-005](docs/adr/ADR-005-declarative-data-quality.md).
+- **Enforced column masks** (`fleet_governance/masking.py`): UC column masks on biometrics
+  (NULL) and location (coarsened) for everyone outside the `mask_privileged_group`
+  (`fleet_safety_officers` by default), derived from the classification — applied to
+  **all four** Gold surfaces (live, alerts, quarantine, aggregates; aggregation does not
+  de-identify), with typed UDF variants (INT sources vs DOUBLE aggregates). See
+  [ADR-007](docs/adr/ADR-007-column-masking.md).
+- **Risk-score drift** (`drift.py`): PSI of the risk-score distribution vs. a baseline. Drift
+  is a **WARN signal, not a failure** (suspect sensor recalibration before a real safety shift).
+- **Pipeline self-metrics** (`observability.py`): a tall, append-only `pipeline_metrics` fact
+  (row counts, `join_match_rate`, quarantine count, `risk_score_psi`, band distribution) for
+  Grafana. `build_dim_driver` adds SCD2 assignment history — see
+  [ADR-006](docs/adr/ADR-006-scd2-driver-dimension.md).
+
+> The risk score is computed once via micro-batch recompute (not continuous streaming) — see
+> [ADR-004](docs/adr/ADR-004-micro-batch-execution.md). For ops, see
+> [docs/RUNBOOK.md](docs/RUNBOOK.md); for scale, [docs/SCALING.md](docs/SCALING.md); for the
+> system shape, [docs/architecture.md](docs/architecture.md).
+
 ---
 
 ## Known Gotchas
@@ -308,3 +395,22 @@ For a given watch event, any tracker event within ±60 seconds qualifies. If a d
 tracker events within that window (high GPS frequency), the join produces two rows.
 `fleet_live_status` resolves this with `ROW_NUMBER() OVER (PARTITION BY driver_id ORDER BY timestamp DESC)`,
 keeping only the most recent match per driver. `fleet_safety_alerts` keeps all rows.
+
+**8. Biometrics read as NULL / location looks coarse — usually not a bug**
+UC column masks ([ADR-007](docs/adr/ADR-007-column-masking.md)) redact `heart_rate` /
+`stress_score` to NULL and coarsen `latitude` / `longitude` for any principal **outside** the
+`mask_privileged_group` (`fleet_safety_officers`). If a dashboard shows blanks, check the
+querying principal's account-group membership before suspecting the pipeline. The group must
+exist at the account level — provision it separately from the workspace Terraform layer.
+
+**9. A run "succeeds" but wrote fewer `fleet_live_status` rows than expected**
+Rows that failed an `ERROR` data-quality expectation are diverted to
+`fleet_live_status_quarantine` (with a `_dq_failures` column), not written to the live table.
+The run only fails if an `ERROR` expectation was breached at all — check
+`live_quarantined_rows` in `pipeline_metrics` and inspect the quarantine table. This is by
+design ([ADR-005](docs/adr/ADR-005-declarative-data-quality.md)).
+
+**10. `risk_score_psi` is high in `pipeline_metrics`**
+Drift is a **WARN signal, not a failure**. A significant PSI (≥ 0.25) most often means a
+sensor cohort was recalibrated or a units/config change happened upstream — rule those out via
+the `dist_band_*` metrics across recent runs before concluding the fleet actually got riskier.
