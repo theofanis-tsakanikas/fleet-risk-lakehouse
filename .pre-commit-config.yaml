@@ -14,21 +14,20 @@ repos:
           - --args=-no-color
 
   # ---------------------------------------------------------------------------
-  # Python: formatter (black) and linter (ruff) scoped to notebooks and src
+  # Python: ruff as BOTH linter and formatter (same tool + line-length=120 as
+  # `make fmt` / CI — a second formatter like black at its default 88 would
+  # fight ruff-format and flip files back and forth).
   # ---------------------------------------------------------------------------
-  - repo: https://github.com/psf/black
-    rev: 24.10.0
-    hooks:
-      - id: black
-        language_version: python3
-        files: ^(notebooks|src)/
-
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.8.4
     hooks:
       - id: ruff
         args: [--fix]
         files: ^(notebooks|src)/
+      - id: ruff-format
+        # Same scope as the Makefile's FMT_SCOPE (`make fmt-check` / CI) — the
+        # notebooks and producer scripts are deliberately not format-enforced.
+        files: ^(src/(fleet_transforms|fleet_governance|replay)/|src/mock_generator/generators\.py|tests/)
 
   # ---------------------------------------------------------------------------
   # Secret scanning — blocks credentials/keys from being committed

@@ -10,7 +10,6 @@
 import os
 import logging
 import sys
-from databricks.connect import DatabricksSession
 from pyspark.sql import functions as F
 
 # --- DIRECTORY CONFIGURATION ---
@@ -40,9 +39,15 @@ logger = logging.getLogger(__name__)
 
 # === INITIALIZE SPARK SESSION ===
 # Standard initialization for Databricks notebooks
-logger.info("Connecting to Databricks Serverless Compute...")
-spark = DatabricksSession.builder.serverless().getOrCreate()
-logger.info("✅ Spark session initialized successfully!")
+# Inside a Databricks job a UC-ready `spark` session already exists — reuse it.
+# Only local development (VS Code / Databricks Connect) builds a new one.
+if "spark" not in globals():
+    logger.info("Connecting to Databricks Serverless Compute (Local Context)...")
+    from databricks.connect import DatabricksSession
+
+    spark = DatabricksSession.builder.serverless().getOrCreate()
+else:
+    logger.info("✅ Using existing Databricks Spark session")
 
 # COMMAND ----------
 # === CONFIGURATION ===

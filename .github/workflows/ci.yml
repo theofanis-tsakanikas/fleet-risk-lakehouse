@@ -59,23 +59,25 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
+      # The four gates below route through the Makefile (PYTHON=python, since CI
+      # installs deps into the system interpreter, not the local .venv). This keeps
+      # the gate commands defined in exactly one place — `make check` reproduces all
+      # of them locally. The ruff-format scope (notebooks/producers excluded to avoid
+      # a black/ruff conflict) lives in the Makefile's FMT_SCOPE.
+
       - name: "Ruff Lint"
-        run: ruff check src notebooks tests
+        run: make lint PYTHON=python
 
       - name: "Ruff Format Check"
-        # Scoped to the test suite + extracted transform/governance modules. The
-        # notebooks and producer scripts are formatted by black (see
-        # .pre-commit-config.yaml), whose style differs slightly from ruff's
-        # formatter — so they are excluded from this gate to avoid a black/ruff conflict.
-        run: ruff format --check src/fleet_transforms src/fleet_governance src/mock_generator/generators.py tests
+        run: make fmt-check PYTHON=python
 
       - name: "Run Local Test Suite (pytest)"
         # Full suite: pure-Python + local PySpark transforms, the whole-tree
         # `terraform fmt -check`, and offline `terraform validate`. The
         # databricks-bundle-validate test self-skips (CLI/auth absent in CI).
-        run: python -m pytest -ra
+        run: make test PYTHON=python
 
       - name: "Governance docs in sync with the code"
         # Risk model card + GDPR Art. 30 processing record are generated from the
         # risk model + column classification; fail if the committed docs drifted.
-        run: PYTHONPATH=src python -m fleet_governance.generate --check
+        run: make govern-check PYTHON=python

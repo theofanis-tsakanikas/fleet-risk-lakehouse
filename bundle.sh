@@ -14,8 +14,11 @@ OUT_WORKSPACE_URL="workspace_url"
 OUT_SPN_APP_ID="spn_application_id"
 
 # Bundle Config
-BUNDLE_OVERRIDE_PATH=".databricks/bundle/dev"
-BUNDLE_JOB_NAME="fleet_monitoring_job"
+# Target-aware: the override file must land under the target being deployed,
+# otherwise a `prod` deploy would silently miss the spn_id override.
+BUNDLE_TARGET="${BUNDLE_TARGET:-dev}"
+BUNDLE_OVERRIDE_PATH=".databricks/bundle/$BUNDLE_TARGET"
+BUNDLE_JOB_NAME="${BUNDLE_JOB_NAME:-fleet_monitoring_job}"
 
 # --- 1. Smart Configuration Discovery ---
 # Fetch DATABRICKS_HOST if not already provided by the environment (e.g. CI/CD)
@@ -51,19 +54,19 @@ ACTION=$1
 
 case $ACTION in
   validate)
-    echo "📋 Validating Bundle..."
-    databricks bundle validate
+    echo "📋 Validating Bundle (target: $BUNDLE_TARGET)..."
+    databricks bundle validate -t "$BUNDLE_TARGET"
     ;;
   deploy)
-    echo "🚀 Deploying Bundle..."
-    databricks bundle deploy --auto-approve
+    echo "🚀 Deploying Bundle (target: $BUNDLE_TARGET)..."
+    databricks bundle deploy -t "$BUNDLE_TARGET" --auto-approve
     ;;
   run)
-    echo "🏃 Running Job: $BUNDLE_JOB_NAME..."
-    databricks bundle run "$BUNDLE_JOB_NAME"
+    echo "🏃 Running Job: $BUNDLE_JOB_NAME (target: $BUNDLE_TARGET)..."
+    databricks bundle run -t "$BUNDLE_TARGET" "$BUNDLE_JOB_NAME"
     ;;
   *)
-    echo "❌ Usage: ./bundle.sh <validate|deploy|run>"
+    echo "❌ Usage: ./bundle.sh <validate|deploy|run>   (env: BUNDLE_TARGET=dev|prod, BUNDLE_JOB_NAME=...)"
     exit 1
     ;;
 esac
