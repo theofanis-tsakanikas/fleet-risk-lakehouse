@@ -9,6 +9,11 @@ __pycache__/
 *.env
 
 # ==========================================
+# 📄 Local generated docs (personal, not part of the repo)
+# ==========================================
+/Fleet_Risk_Lakehouse_Overview.pdf
+
+# ==========================================
 # 📊 Data (local staging + full VED download; the committed sample stays tracked)
 # ==========================================
 data/temp/
