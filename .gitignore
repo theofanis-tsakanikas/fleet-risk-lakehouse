@@ -9,11 +9,6 @@ __pycache__/
 *.env
 
 # ==========================================
-# 📝 Local session notes (handoff scratch — never committed)
-# ==========================================
-note/
-
-# ==========================================
 # 📊 Data (local staging + full VED download; the committed sample stays tracked)
 # ==========================================
 data/temp/
