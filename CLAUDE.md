@@ -55,8 +55,10 @@ and `make check` reproduces CI locally. The Makefile defaults `PYTHON` to `.venv
 ```
 .
 ├── .github/workflows/
+│   ├── ci.yml                        # Trigger: PR + push main — lint + fmt-check + test + govern-check gates
 │   ├── deploy-fleet-pipeline.yml     # Trigger: manual (workflow_dispatch) — full apply + DABs deploy
-│   └── terraform-plan-pr.yml         # Trigger: pull_request — plan all 3 layers, post sticky comments
+│   ├── terraform-plan-pr.yml         # Trigger: pull_request — plan all 3 layers, post sticky comments
+│   └── gitleaks.yml                  # Trigger: PR + push — secret scan over full git history
 ├── notebooks/
 │   ├── bronze/                        # Auto Loader ingestion (cloudFiles, CSV/JSON → Delta)
 │   │   ├── bronze_trackers.py
@@ -81,6 +83,7 @@ and `make check` reproduces CI locally. The Makefile defaults `PYTHON` to `.venv
 │   └── generate.py                    # Generates docs/governance/ (risk model card + GDPR Art. 30 record)
 ├── src/mock_generator/                # Python IoT simulators (CSV trackers, JSON watches)
 │   ├── fleet_config.json              # 10 driver / truck / watch device mappings
+│   ├── generators.py                  # Pure, unit-tested event generators (dirty-data injection logic)
 │   ├── producer_trackers.py
 │   └── producer_watches.py
 ├── src/replay/                        # Real-data replay (VED trips → the same Bronze contract)
@@ -95,6 +98,11 @@ and `make check` reproduces CI locally. The Makefile defaults `PYTHON` to `.venv
 ├── docs/architecture.md               # Mermaid diagrams (data flow, Gold gates, Terraform layers)
 ├── docs/RUNBOOK.md                    # Ops: latency/cost, observability, incidents, recovery
 ├── docs/SCALING.md                    # What changes (and doesn't) from 10 → 10,000 drivers
+├── docs/TESTING.md                    # Testing philosophy + coverage map (infra-free suite)
+├── app/                               # Streamlit "Fleet Safety Command Center" over the Gold layer
+│   ├── streamlit_app.py               # UI: KPIs, risk map, leaderboard, driver drill-down, Medallion view
+│   ├── fleet_data.py                  # Data layer: offline demo synthesis + Databricks SQL (live) reader
+│   └── requirements.txt               # UI deps (light; no Spark)
 ├── terraform/
 │   ├── 01_infra/                      # AWS: S3, IAM, Secrets Manager, SPN, Metastore, Workspace
 │   ├── 02_workspace/                  # Databricks: SQL Warehouse, metastore-level grants

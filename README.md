@@ -70,7 +70,7 @@ The platform implements a robust **Medallion Architecture**, providing full data
 * **Orchestration:** Databricks Asset Bundles (DABs) — two 8-task Workflow DAGs (mock data on demand; real-data replay on a periodic trigger).
 * **Engine:** Apache Spark (Structured Streaming) & Python; pure, unit-tested transform logic under `src/`.
 * **CI/CD & Automation:** GitHub Actions, Terraform, Bash, a `Makefile` front door.
-* **Observability:** Grafana dashboards via a serverless Databricks SQL Warehouse, fed by a `pipeline_metrics` fact.
+* **Observability:** Grafana dashboards and a Streamlit "Fleet Safety Command Center" (`app/`) over a serverless Databricks SQL Warehouse, fed by a `pipeline_metrics` fact. The Streamlit app also runs fully offline in a faithful demo mode (same risk formula, no cloud).
 
 > 🎥 **[ TO RE-RECORD ]** — *System Architecture diagram*
 > The live, code-versioned Mermaid diagrams (data flow, Gold quality/governance gates, Terraform layers) are in **[docs/architecture.md](./docs/architecture.md)** — render those, or capture a polished diagram. (The previous `images/architecture.png` predates the 8-task DAG and the governance/quality additions.)
@@ -93,6 +93,7 @@ fleet-risk-lakehouse/
 │   ├── fleet_governance/      # classification (GDPR Art. 9), masking (UC column masks), generate (docs)
 │   ├── mock_generator/        # IoT simulation engine (intentional dirty-data injection)
 │   └── replay/                # Real-data replay: VED parsing, event-conditioned biometrics, producer
+├── app/                       # Streamlit "Fleet Safety Command Center" (offline demo or live Databricks SQL)
 ├── data/ved/                  # Committed real VED sample (10 vehicles, 18 trips) + attribution
 ├── scripts/                   # fetch_ved.py — pull the full VED dataset (gitignored)
 ├── docs/
