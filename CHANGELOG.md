@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `terraform.sh` loads `.env` via `set -a; source` (handles quotes/spaces/comments); `bundle.sh` is target-aware (`BUNDLE_TARGET`, `BUNDLE_JOB_NAME`); S3 backends use `use_lockfile = true` (state locking); `databricks/setup-cli` pinned to a commit SHA; `requirements.txt` fully pinned (dead `databricks-cli`/`black` deps removed); bronze/silver notebooks reuse an existing `spark` session instead of always building a Connect session.
 
 ### Fixed
+- **Layer 03 apply race** (`databricks_unity_catalog`): the external-location grants and catalog grants referenced their securables by name (string), so Terraform never ordered them after the location/catalog creation — they raced ahead and failed with `External Location/Catalog 'X' does not exist` (cascading a spurious storage-credential read error) on a fresh apply. Added the missing `depends_on = [databricks_external_location.this]` / `[databricks_catalog.this]`, matching the schema/volume grants that already had it.
 - Doc drift: task counts (7 → 8), `app/README.md` example schema (`gold` → `operations`), test counts, and the repo maps in `README.md`/`CLAUDE.md`.
 - `CLAUDE.md` engineering reference: environment variables, Terraform layer apply/destroy order, DABs commands, Grafana setup, and known gotchas.
 - Architecture Decision Records under `docs/adr/`:
