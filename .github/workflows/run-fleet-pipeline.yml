@@ -4,7 +4,7 @@ name: "Run Fleet Pipeline"
 # Manual-only. Pick a data scenario from the dropdown and run it with one click. This
 # deploys the current bundle (fast — notebooks/src only, no infrastructure) and then triggers
 # the selected medallion job. Infrastructure provisioning lives in the separate
-# "Deploy Fleet Monitoring Pipeline" workflow and is intentionally NOT re-run here.
+# "Deploy Infrastructure & Pipeline" workflow and is intentionally NOT re-run here.
 on:
   workflow_dispatch:
     inputs:

@@ -1,4 +1,4 @@
-name: "Deploy Fleet Monitoring Pipeline"
+name: "Deploy Infrastructure & Pipeline"
 
 # --- 🚀 TRIGGER CONFIGURATION ---
 # Manual-only. This job runs a live `terraform apply` against real AWS/Databricks,
