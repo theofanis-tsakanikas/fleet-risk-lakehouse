@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Prerequisites / bootstrap documentation + `TF_VAR_aws_account_id` wiring**: a new
+  *Prerequisites (one-time bootstrap)* section in `CLAUDE.md` (and a pointer from `README.md`)
+  lists everything a real run needs — accounts, the Terraform state bucket, the account-admin SPN,
+  the `fleet_safety_officers` group, and the exact local `.env` values / GitHub secrets. The real
+  AWS account id is now supplied via `TF_VAR_aws_account_id` — added to `.env.example` and wired
+  into the deploy and PR-plan workflows from a new `AWS_ACCOUNT_ID` secret (the committed `.tf`
+  default stays a placeholder).
 - **One-click scenario runner** (`.github/workflows/run-fleet-pipeline.yml`): a manual `workflow_dispatch` with a **choice** dropdown — *"Simulated IoT sensors (mock data)"* vs *"Real vehicle telemetry (VED replay)"* — that maps the selection to the matching DABs job, deploys the current bundle, and runs it (no infrastructure re-apply; that stays in the deploy workflow). The two DABs jobs were also renamed to describe their scenario (*Fleet Pipeline — Simulated IoT Sensors (mock data)* / *Fleet Pipeline — Real Vehicle Telemetry (VED replay)*).
 - **Push alerting to Slack + PagerDuty** (`src/fleet_alerting/`, ADR-009): CRITICAL/DANGER (and, per config, WARNING/OVERSPEED) alerts are pushed **from the Gold run** — event-driven, not via Grafana polling — to Slack (team awareness) and PagerDuty (on-call escalation). Severity-routed and deduplicated per driver. The outgoing message is built from an allowlist of operational/derived fields, so **special-category biometrics never leave the platform** (a test asserts the allowlist is disjoint from the governed special-category columns). Delivery is best-effort (records `alerts_dispatch_errors` on `pipeline_metrics`, never fails the run), uses only stdlib `urllib` (no new dependency), and is a documented no-op until a Slack webhook / PagerDuty routing key is configured (via DABs variables → a secret scope in production). The generated Art. 30 record now names Slack/PagerDuty as recipients and states biometrics are never sent externally.
 - **Real-world data replay** (`src/replay/`, ADR-008): parses Vehicle Energy Dataset trips (committed real sample: 10 vehicles / 18 trips, Apache-2.0, `data/ved/`), pseudonymises them onto the fleet roster, rebases them onto a replay anchor, and emits both streams in the mock producers' exact schemas. Driver biometrics are simulated **conditioned on the real driving events** (hard braking detected in the raw trace, overspeed from `RISK_MODEL`), deterministic per seed. `scripts/fetch_ved.py` pulls the full dataset.

@@ -23,6 +23,44 @@ cp .env.example .env   # then edit .env — see Environment Variables table belo
 
 ---
 
+## Prerequisites (one-time bootstrap)
+
+These must exist **before** the Quick Start — Terraform does not bootstrap them:
+
+**Accounts**
+- An **AWS account** and a **Databricks-on-AWS account** with a pre-existing **Account-Admin
+  Service Principal** (client id + secret) — the bootstrap identity Terraform authenticates as.
+
+**AWS bootstrap (manual)**
+- The **Terraform state bucket** `generic-terraform-state-eu-central-1` (region `eu-central-1`,
+  encryption on) — `terraform init` fails without it.
+- **Local runs:** an IAM admin user with access keys (in `.env`). **CI:** a **GitHub OIDC
+  provider** + an IAM role (the `AWS_DEPLOY_ROLE_ARN` secret) trusted by this repo, with
+  permissions over S3 / IAM / Secrets Manager and the state bucket.
+
+**Databricks account (manual)**
+- An account-level group **`fleet_safety_officers`** (the `mask_privileged_group`) whose members
+  see unmasked biometrics / precise location. Without it the pipeline still runs, but biometrics
+  read as NULL for everyone (see [ADR-007](docs/adr/ADR-007-column-masking.md) / Gotcha #8).
+
+**Credentials**
+- **Local:** `cp .env.example .env`, then fill the AWS keys, `TF_VAR_aws_account_id` (your real
+  12-digit id), and the Account-Admin SPN (`TF_VAR_databricks_*` / `DATABRICKS_*`). The **project**
+  SPN (`TF_VAR_spn_*`) is injected automatically by `terraform.sh` — never set by hand.
+- **CI** (repo → Settings → Secrets and variables → Actions):
+  - Secrets: `AWS_DEPLOY_ROLE_ARN`, `AWS_ACCOUNT_ID`, `DATABRICKS_ACCOUNT_ID`,
+    `DATABRICKS_ADMIN_CLIENT_ID`, `DATABRICKS_ADMIN_CLIENT_SECRET`, `DATABRICKS_HOST`.
+  - Variables: `AWS_DEFAULT_REGION` (e.g. `eu-central-1`).
+
+**Optional (feature-gated — a no-op if omitted)**
+- **Alerting:** a Slack Incoming Webhook URL + a PagerDuty Events API v2 routing key, wired to the
+  DABs vars `slack_webhook_url` / `pagerduty_routing_key` (via a Databricks secret scope) — see
+  [ADR-009](docs/adr/ADR-009-alert-notifications.md).
+- **Grafana:** a Grafana instance with the Databricks datasource plugin pointed at the
+  `serverless_bi-dev` SQL Warehouse (catalog `fleet_dev`, schema `operations`).
+
+---
+
 ## Make targets (the front door)
 
 A [Makefile](Makefile) wraps the tooling in one discoverable interface — run `make help` to
@@ -142,6 +180,7 @@ cp .env.example .env
 | `AWS_ACCESS_KEY_ID` | Local Terraform runs, mock generators | AWS IAM admin user access key (local only — CI authenticates via OIDC) |
 | `AWS_SECRET_ACCESS_KEY` | Local Terraform runs, mock generators | AWS IAM admin user secret (local only — CI authenticates via OIDC) |
 | `AWS_DEFAULT_REGION` | All | Hardcode to `eu-central-1` |
+| `TF_VAR_aws_account_id` | `01_infra` (IAM trust policies) | Your real 12-digit AWS account ID (local only — CI reads the `AWS_ACCOUNT_ID` secret). The committed `.tf` default is a placeholder. |
 | `TF_VAR_databricks_account_id` | `01_infra` | Databricks Account Console (top-right menu) |
 | `TF_VAR_databricks_client_id` | `01_infra` | Pre-existing **Account Admin** SPN client ID |
 | `TF_VAR_databricks_client_secret` | `01_infra` | Pre-existing Account Admin SPN secret |

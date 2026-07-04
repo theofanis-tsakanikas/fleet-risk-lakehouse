@@ -37,6 +37,8 @@ jobs:
 
     env:
       AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
+      # Real AWS account id for the IAM trust policies (the committed .tf default is a placeholder).
+      TF_VAR_aws_account_id: ${{ secrets.AWS_ACCOUNT_ID }}
       TF_VAR_databricks_account_id: ${{ secrets.DATABRICKS_ACCOUNT_ID }}
       TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_ADMIN_CLIENT_ID }}
       TF_VAR_databricks_client_secret: ${{ secrets.DATABRICKS_ADMIN_CLIENT_SECRET }}

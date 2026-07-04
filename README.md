@@ -225,6 +225,13 @@ Isolated state files per layer minimize the "blast radius" of changes; foundatio
 
 > The `Makefile` is the front door; the shell scripts below are what it calls (and what CI calls).
 
+> 🔑 **Before the first run** there is a one-time bootstrap (Terraform does not create these
+> itself): the Terraform **state S3 bucket**, an **Account-Admin Databricks SPN**, AWS
+> credentials (admin keys locally / an OIDC role for CI), your real `TF_VAR_aws_account_id`, and
+> the account-level `fleet_safety_officers` group. Alerting (Slack/PagerDuty) and Grafana are
+> optional. The full checklist — including the exact `.env` values and GitHub secrets — lives in
+> **[CLAUDE.md → Prerequisites](./CLAUDE.md#prerequisites-one-time-bootstrap)**.
+
 **1. Environment Setup & Bootstrapping**
 ```bash
 make setup        # or: ./setup.sh   (creates the .venv test env + .env)
