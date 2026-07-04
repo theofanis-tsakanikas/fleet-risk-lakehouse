@@ -57,6 +57,7 @@ module "databricks_account" {
   admin_group_name             = var.admin_group_name
   metastore_admins             = var.metastore_admins
   identity_groups              = var.identity_groups
+  mask_privileged_group        = var.mask_privileged_group
   metastore_name               = var.metastore_name
   metastore_storage_root       = "s3://${module.aws_foundation.metastore_bucket_id}"
   metastore_iam_role_arn       = module.aws_iam.metastore_role_arn

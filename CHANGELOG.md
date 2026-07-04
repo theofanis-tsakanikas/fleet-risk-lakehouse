@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Auto-add the project SPN to the masking privileged group**: layer 01 now looks up the
+  account-level `mask_privileged_group` (`fleet_safety_officers`) via a data source and adds the
+  Terraform-created project SPN to it, so the pipeline's own observability reads (biometric
+  null-rates) are not masked — no manual membership step. Human members stay managed by identity
+  admins. The group must exist before the apply (a documented prerequisite; a missing group now
+  fails loudly). New `mask_privileged_group` variable on layer 01 + the `databricks_account` module.
 - **Prerequisites / bootstrap documentation + `TF_VAR_aws_account_id` wiring**: a new
   *Prerequisites (one-time bootstrap)* section in `CLAUDE.md` (and a pointer from `README.md`)
   lists everything a real run needs — accounts, the Terraform state bucket, the account-admin SPN,

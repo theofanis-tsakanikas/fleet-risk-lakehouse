@@ -102,6 +102,12 @@ variable "identity_groups" {
   default     = ["data_engineers", "data_analysts", "business_users"]
 }
 
+variable "mask_privileged_group" {
+  description = "Account group whose members see unmasked biometrics/location (ADR-007). Must exist before apply; the project SPN is added to it automatically."
+  type        = string
+  default     = "fleet_safety_officers"
+}
+
 variable "metastore_name" {
   description = "The name of the Unity Catalog Metastore"
   type        = string

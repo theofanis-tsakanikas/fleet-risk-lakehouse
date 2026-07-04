@@ -86,6 +86,21 @@ resource "databricks_group" "functional_groups" {
   display_name = each.value
 }
 
+# --- 🔐 5. MASKING PRIVILEGED GROUP MEMBERSHIP ---
+# The GDPR column masks (ADR-007) reveal biometrics / precise location only to members of the
+# `mask_privileged_group`. That account-level group is provisioned out-of-band (a documented
+# prerequisite — humans are managed by identity admins), but the *project SPN* is created here
+# and needs unmasked reads so its own observability metrics (biometric null-rates) stay
+# accurate. So we add the SPN to the group automatically rather than by hand.
+data "databricks_group" "mask_privileged" {
+  display_name = var.mask_privileged_group
+}
+
+resource "databricks_group_member" "spn_mask_privileged" {
+  group_id  = data.databricks_group.mask_privileged.id
+  member_id = databricks_service_principal.automation_sp.id
+}
+
 
 # --- 🧠 4. UNITY CATALOG METASTORE ---
 resource "databricks_metastore" "this" {

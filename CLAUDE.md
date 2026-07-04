@@ -39,9 +39,13 @@ These must exist **before** the Quick Start — Terraform does not bootstrap the
   permissions over S3 / IAM / Secrets Manager and the state bucket.
 
 **Databricks account (manual)**
-- An account-level group **`fleet_safety_officers`** (the `mask_privileged_group`) whose members
-  see unmasked biometrics / precise location. Without it the pipeline still runs, but biometrics
-  read as NULL for everyone (see [ADR-007](docs/adr/ADR-007-column-masking.md) / Gotcha #8).
+- An account-level group **`fleet_safety_officers`** (the `mask_privileged_group`), created
+  **before the deploy** — layer 01 looks it up (data source) and adds the **project SPN** to it
+  automatically (so the pipeline's own biometric null-rate metrics read unmasked; a missing group
+  fails the apply). You add the **human** members: yourself, plus the dashboard's query principal
+  if you want Grafana/Streamlit to show raw biometrics. Its members are the only principals that
+  see unmasked biometrics / precise location — everyone else sees masked (see
+  [ADR-007](docs/adr/ADR-007-column-masking.md) / Gotcha #8).
 
 **Credentials**
 - **Local:** `cp .env.example .env`, then fill the AWS keys, `TF_VAR_aws_account_id` (your real

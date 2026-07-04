@@ -72,9 +72,12 @@ type and fails loudly on a masked column with no matching variant.
 **Trade-offs**
 
 - The masks bind to a **group** (`fleet_safety_officers`) that must exist and be governed at
-  the account level; provisioning that group/membership is an account-admin responsibility
-  outside the workspace-scoped Terraform layer. The default name is a placeholder to confirm
-  per deployment.
+  the account level; provisioning the group + its **human** members is an account-admin
+  responsibility (the default name is a placeholder to confirm per deployment). The group must
+  exist **before** the deploy: the account layer (`01_infra`) looks it up via a data source and
+  adds the **project SPN** to it automatically, so the pipeline's own observability reads
+  (biometric null-rates) are not masked. That makes it a hard dependency — a missing group fails
+  the apply loudly rather than silently degrading a metric.
 - Masking applies on read at the Gold tables; raw Bronze/Silver still hold unmasked values and
   rely on schema-level grants. Tightening Silver access (or masking there too) is a follow-up
   if the threat model requires it.
