@@ -44,7 +44,14 @@ fi
 # --- 🔑 4. Secret Fetching Logic (For workspace AND unity_catalog modules) ---
 if { [ "$MODULE" == "02_workspace" ] || [ "$MODULE" == "03_unity_catalog" ]; } && { [ "$ACTION" == "plan" ] || [ "$ACTION" == "apply" ] || [ "$ACTION" == "destroy" ]; }; then
   echo "🕵️  Fetching Service Principal credentials from infra state..."
-  
+
+  # The output read below needs 01_infra initialised (its S3 backend configured). During an
+  # apply that is already true (01 was applied first this session), but a standalone destroy of
+  # 02/03 starts from a fresh runner where 01 was never init'd — so init it quietly here. init
+  # is idempotent and changes nothing; without it the credential fetch returns empty and the
+  # destroy fails with "No value for required variable spn_client_id".
+  terraform -chdir=../01_infra init -input=false >/dev/null 2>&1
+
   # Read the Secret ARN from the 01_infra state
   SECRET_ARN=$(terraform -chdir=../01_infra output -raw secrets_manager_id 2>/dev/null)
   
