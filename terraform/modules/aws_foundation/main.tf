@@ -90,7 +90,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "metastore_bucket"
 # ==============================================================================
 
 resource "aws_secretsmanager_secret" "platform_secrets" {
-  name        = "${var.project_name}-${var.environment}-platform-secrets"
+  name        = "fleet-risk-lakehouse-${var.environment}-secrets"
   description = "Central secrets manager for the Cloud Data Platform"
 
   # Delete immediately on destroy instead of AWS's default 30-day recovery window — otherwise a
