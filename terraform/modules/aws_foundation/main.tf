@@ -93,6 +93,11 @@ resource "aws_secretsmanager_secret" "platform_secrets" {
   name        = "${var.project_name}-${var.environment}-platform-secrets"
   description = "Central secrets manager for the Cloud Data Platform"
 
+  # Delete immediately on destroy instead of AWS's default 30-day recovery window — otherwise a
+  # destroy leaves the secret "scheduled for deletion" and the next apply fails to recreate it
+  # ("a secret with this name is already scheduled for deletion"). Fine for a dev/rebuild flow.
+  recovery_window_in_days = 0
+
   tags = {
     Name        = "${var.project_name}-secrets"
     Environment = var.environment
