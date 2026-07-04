@@ -10,12 +10,16 @@ variable "databricks_account_id" {
 variable "spn_client_id" {
   description = "The Client (Application) ID of the Service Principal used for workspace config"
   type        = string
+  # Injected by terraform.sh from Secrets Manager for apply. Defaults to empty so a no-op
+  # destroy of already-empty state still passes when the secret is unavailable (e.g. mid-teardown).
+  default = ""
 }
 
 variable "spn_client_secret" {
   description = "The Client Secret of the Service Principal used for workspace config"
   type        = string
   sensitive   = true
+  default     = ""
 }
 
 # ==============================================================================

@@ -6,12 +6,16 @@ variable "spn_client_id" {
   description = "The Service Principal Client ID for Databricks authentication"
   type        = string
   sensitive   = true
+  # Injected by terraform.sh from Secrets Manager for apply. Defaults to empty so a no-op
+  # destroy of already-empty state still passes when the secret is unavailable (e.g. mid-teardown).
+  default = ""
 }
 
 variable "spn_client_secret" {
   description = "The Service Principal Client Secret for Databricks authentication"
   type        = string
   sensitive   = true
+  default     = ""
 }
 
 # ==============================================================================
