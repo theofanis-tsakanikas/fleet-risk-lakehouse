@@ -50,7 +50,8 @@ locals {
   panel_specs = [
     {
       title   = "Join match rate (latest)"
-      ptype   = "stat", unit = "percentunit", decimals = 2
+      ptype   = "gauge", unit = "percentunit", decimals = 2
+      gmin    = 0, gmax = 1, thr = local.match_thresholds
       x       = 0, y = 0, w = 6, h = 4
       sql     = "SELECT value FROM ${local.metrics_table} WHERE metric = 'join_match_rate' ORDER BY captured_at DESC LIMIT 1"
       columns = local.cols_value
@@ -122,10 +123,12 @@ locals {
     # jsondecode(jsonencode(...)) keeps the ternary branches the same (string) type — the objects
     # differ in shape per panel type, which a bare ?: rejects.
     fieldConfig = {
-      # Draw points always so a single run (one data point) is still visible on the line.
-      defaults = jsondecode(p.ptype == "timeseries"
-        ? jsonencode({ unit = p.unit, decimals = p.decimals, custom = { drawStyle = "line", showPoints = "always", lineWidth = 2, pointSize = 7, spanNulls = true } })
-        : jsonencode({ unit = p.unit, decimals = p.decimals })
+      # Draw points always so a single run (one data point) is still visible on the line; gauges
+      # carry min/max + threshold colouring. try() lets those keys exist only on the gauge spec.
+      defaults = jsondecode(
+        p.ptype == "timeseries" ? jsonencode({ unit = p.unit, decimals = p.decimals, custom = { drawStyle = "line", showPoints = "always", lineWidth = 2, pointSize = 7, spanNulls = true } }) :
+        p.ptype == "gauge" ? jsonencode({ unit = p.unit, decimals = p.decimals, min = try(p.gmin, 0), max = try(p.gmax, 100), color = { mode = "thresholds" }, thresholds = try(p.thr, local.risk_thresholds) }) :
+        jsonencode({ unit = p.unit, decimals = p.decimals })
       )
       overrides = []
     }
@@ -133,6 +136,7 @@ locals {
     # (values = true), else Grafana collapses the frame to a single bar. Bar chart / table ignore it.
     options = jsondecode(
       p.ptype == "stat" ? jsonencode({ reduceOptions = { calcs = ["lastNotNull"] }, colorMode = "value", graphMode = "none" }) :
+      p.ptype == "gauge" ? jsonencode(local.gauge_options) :
       p.ptype == "bargauge" ? jsonencode({ reduceOptions = { values = true }, displayMode = "gradient", orientation = "horizontal" }) :
       p.ptype == "barchart" ? jsonencode({ xField = "metric", showValue = "always" }) :
       jsonencode({})

@@ -57,10 +57,18 @@ locals {
 
   ds_ref = { type = "yesoreyeram-infinity-datasource", uid = grafana_data_source.databricks.uid }
 
-  # Risk colouring reused by the KPI stats and the map markers: green < 50 < yellow < 75 < red.
+  # Risk colouring reused by the KPI gauges and the map markers: green < 50 < yellow < 75 < red.
   risk_thresholds = { mode = "absolute", steps = [
     { color = "green", value = null }, { color = "yellow", value = 50 }, { color = "red", value = 75 }
   ] }
+
+  # "Higher is better" colouring for the join-match-rate gauge (0–1): red < 0.8 < yellow < 0.95 < green.
+  match_thresholds = { mode = "absolute", steps = [
+    { color = "red", value = null }, { color = "yellow", value = 0.8 }, { color = "green", value = 0.95 }
+  ] }
+
+  # Shared gauge display options (radial arc with coloured threshold markers).
+  gauge_options = { reduceOptions = { calcs = ["lastNotNull"] }, showThresholdLabels = false, showThresholdMarkers = true, orientation = "auto" }
 }
 
 resource "grafana_dashboard" "fleet_operations" {
@@ -79,38 +87,40 @@ resource "grafana_dashboard" "fleet_operations" {
     panels = [
       # --- Row 0: KPI stats ---------------------------------------------------
       {
-        id          = 1, title = "Avg fleet risk", type = "stat", datasource = local.ds_ref
-        gridPos     = { x = 0, y = 0, w = 6, h = 4 }, targets = [local.ops_target["kpi_avg_risk"]]
-        fieldConfig = { defaults = { unit = "short", decimals = 1, color = { mode = "thresholds" }, thresholds = local.risk_thresholds }, overrides = [] }
-        options     = { reduceOptions = { calcs = ["lastNotNull"] }, colorMode = "value", graphMode = "none" }
+        id          = 1, title = "Avg fleet risk", type = "gauge", datasource = local.ds_ref
+        gridPos     = { x = 0, y = 0, w = 6, h = 5 }, targets = [local.ops_target["kpi_avg_risk"]]
+        fieldConfig = { defaults = { unit = "short", decimals = 1, min = 0, max = 100, color = { mode = "thresholds" }, thresholds = local.risk_thresholds }, overrides = [] }
+        options     = local.gauge_options
       },
       {
-        id          = 2, title = "Max driver risk", type = "stat", datasource = local.ds_ref
-        gridPos     = { x = 6, y = 0, w = 6, h = 4 }, targets = [local.ops_target["kpi_max_risk"]]
-        fieldConfig = { defaults = { unit = "short", decimals = 1, color = { mode = "thresholds" }, thresholds = local.risk_thresholds }, overrides = [] }
-        options     = { reduceOptions = { calcs = ["lastNotNull"] }, colorMode = "value", graphMode = "none" }
+        id          = 2, title = "Max driver risk", type = "gauge", datasource = local.ds_ref
+        gridPos     = { x = 6, y = 0, w = 6, h = 5 }, targets = [local.ops_target["kpi_max_risk"]]
+        fieldConfig = { defaults = { unit = "short", decimals = 1, min = 0, max = 100, color = { mode = "thresholds" }, thresholds = local.risk_thresholds }, overrides = [] }
+        options     = local.gauge_options
       },
       {
         id          = 3, title = "Active safety alerts", type = "stat", datasource = local.ds_ref
-        gridPos     = { x = 12, y = 0, w = 6, h = 4 }, targets = [local.ops_target["kpi_active_alerts"]]
+        gridPos     = { x = 12, y = 0, w = 6, h = 5 }, targets = [local.ops_target["kpi_active_alerts"]]
         fieldConfig = { defaults = { unit = "short", decimals = 0, color = { mode = "fixed", fixedColor = "orange" } }, overrides = [] }
         options     = { reduceOptions = { calcs = ["lastNotNull"] }, colorMode = "value", graphMode = "none" }
       },
       {
         id          = 4, title = "Trucks tracked", type = "stat", datasource = local.ds_ref
-        gridPos     = { x = 18, y = 0, w = 6, h = 4 }, targets = [local.ops_target["kpi_trucks"]]
+        gridPos     = { x = 18, y = 0, w = 6, h = 5 }, targets = [local.ops_target["kpi_trucks"]]
         fieldConfig = { defaults = { unit = "short", decimals = 0, color = { mode = "fixed", fixedColor = "blue" } }, overrides = [] }
         options     = { reduceOptions = { calcs = ["lastNotNull"] }, colorMode = "value", graphMode = "none" }
       },
       # --- Row 1: map + leaderboard ------------------------------------------
       {
         id          = 5, title = "Truck positions — colour = risk (location is masked / coarse)", type = "geomap", datasource = local.ds_ref
-        gridPos     = { x = 0, y = 4, w = 16, h = 12 }, targets = [local.ops_target["geomap"]]
+        gridPos     = { x = 0, y = 5, w = 16, h = 12 }, targets = [local.ops_target["geomap"]]
         fieldConfig = { defaults = { color = { mode = "thresholds" }, thresholds = local.risk_thresholds }, overrides = [] }
         options = {
           view     = { id = "coords", lat = 38.0, lon = 23.75, zoom = 8, allLayers = true }
           controls = { showZoom = true, mouseWheelZoom = true, showAttribution = true, showScale = false }
-          basemap  = { type = "default", name = "Basemap" }
+          # Dark CARTO basemap with place labels OFF — matches the dark dashboard and sidesteps the
+          # local-language label issue entirely (markers are the focus).
+          basemap = { type = "carto", name = "CARTO", config = { theme = "dark", showLabels = false } }
           layers = [{
             type     = "markers"
             name     = "Trucks"
@@ -131,20 +141,20 @@ resource "grafana_dashboard" "fleet_operations" {
       },
       {
         id          = 6, title = "Risk leaderboard (per driver)", type = "barchart", datasource = local.ds_ref
-        gridPos     = { x = 16, y = 4, w = 8, h = 12 }, targets = [local.ops_target["leaderboard"]]
+        gridPos     = { x = 16, y = 5, w = 8, h = 12 }, targets = [local.ops_target["leaderboard"]]
         fieldConfig = { defaults = { unit = "short", decimals = 1, color = { mode = "thresholds" }, thresholds = local.risk_thresholds }, overrides = [] }
         options     = { xField = "driver_id", orientation = "horizontal", showValue = "always" }
       },
       # --- Row 2: distributions ----------------------------------------------
       {
         id          = 7, title = "Alerts by type", type = "piechart", datasource = local.ds_ref
-        gridPos     = { x = 0, y = 16, w = 12, h = 8 }, targets = [local.ops_target["alerts_by_type"]]
+        gridPos     = { x = 0, y = 17, w = 12, h = 8 }, targets = [local.ops_target["alerts_by_type"]]
         fieldConfig = { defaults = { unit = "short", decimals = 0 }, overrides = [] }
         options     = { reduceOptions = { values = true }, pieType = "donut", displayLabels = ["name", "value"], legend = { displayMode = "list", placement = "right" } }
       },
       {
         id          = 8, title = "Risk primary factor (per driver)", type = "piechart", datasource = local.ds_ref
-        gridPos     = { x = 12, y = 16, w = 12, h = 8 }, targets = [local.ops_target["primary_factor"]]
+        gridPos     = { x = 12, y = 17, w = 12, h = 8 }, targets = [local.ops_target["primary_factor"]]
         fieldConfig = { defaults = { unit = "short", decimals = 0 }, overrides = [] }
         options     = { reduceOptions = { values = true }, pieType = "pie", displayLabels = ["name", "value"], legend = { displayMode = "list", placement = "right" } }
       },
