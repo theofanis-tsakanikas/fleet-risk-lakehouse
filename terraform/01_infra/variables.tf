@@ -33,13 +33,13 @@ variable "aws_account_id" {
 variable "data_bucket_name" {
   description = "The globally unique name for the Data Lake bucket"
   type        = string
-  default     = "dbx-data-lake-bucket"
+  default     = "fleet-risk-lakehouse-datalake-eu-central-1"
 }
 
 variable "metastore_bucket_name" {
   description = "The globally unique name for the Unity Catalog metastore bucket"
   type        = string
-  default     = "dbx-uc-metastore-bucket"
+  default     = "fleet-risk-lakehouse-metastore-eu-central-1"
 }
 
 variable "datalake_role_name" {
@@ -93,7 +93,7 @@ variable "admin_group_name" {
 variable "metastore_admins" {
   description = "List of user IDs (Account Console) to add to the admin group"
   type        = list(string)
-  default     = ["11111111111111", "22222222222222"]
+  default     = ["70550279536732", "79066160746664"]
 }
 
 variable "identity_groups" {

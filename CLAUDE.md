@@ -189,7 +189,7 @@ cp .env.example .env
 | `DATABRICKS_CLIENT_ID` | `bundle.sh` (local dev) | Same value as `TF_VAR_databricks_client_id` |
 | `DATABRICKS_CLIENT_SECRET` | `bundle.sh` (local dev) | Same value as `TF_VAR_databricks_client_secret` |
 | `DATABRICKS_HOST` | `bundle.sh`, notebooks | Derived from the `workspace_url` output of `01_infra` — **never a stored secret**. In CI the deploy job passes it to the bundle job as an output; `bundle.sh` otherwise fetches it from Terraform. Set it by hand only for a standalone local run. |
-| `DATA_LAKE_BUCKET` | Mock generators | S3 bucket name (`dbx-data-lake-bucket`) |
+| `DATA_LAKE_BUCKET` | Mock generators | S3 bucket name (`fleet-risk-lakehouse-datalake-eu-central-1`) |
 | `S3_FOLDER_WATCHES` / `S3_FOLDER_TRACKERS` | Mock generators | Landing zone S3 paths |
 | `WATCHES_CATALOG` / `TRACKERS_CATALOG` / `GOLD_CATALOG` | Notebooks | Unity Catalog catalog names |
 | `*_SCHEMA` / `*_TABLE` / `*_VOLUME` variables | Notebooks | UC object names; defaults match `databricks.yml` |
