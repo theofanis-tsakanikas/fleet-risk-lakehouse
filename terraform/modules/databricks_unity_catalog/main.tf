@@ -47,6 +47,11 @@ resource "databricks_grants" "external_locations" {
       privileges = grant.value
     }
   }
+
+  # The securable is referenced by name (string), so Terraform cannot infer that this grant
+  # must wait for the external location to exist — declare it explicitly (same pattern as the
+  # schema/volume grants below). Without this the grant races ahead → "does not exist".
+  depends_on = [databricks_external_location.this]
 }
 
 # --- 3. DYNAMIC CATALOGS ---
@@ -86,6 +91,10 @@ resource "databricks_grants" "catalogs" {
       privileges = grant.value
     }
   }
+
+  # Explicit dependency: the catalog is referenced by name (string), so without this the grant
+  # races ahead of catalog creation → "Catalog does not exist" (same fix as the grants above).
+  depends_on = [databricks_catalog.this]
 }
 
 # --- 5. FLATTENING SCHEMAS FOR LOOPING ---
