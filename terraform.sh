@@ -103,8 +103,13 @@ case $ACTION in
     ;;
   output)
     # 1. Remove $1 (module) and $2 (action) from the arguments list
-    shift 2 
-    
+    shift 2
+
+    # Ensure the layer is initialised so `output` works on a fresh runner (e.g. the run
+    # workflow, where bundle.sh reads workspace_url/spn_application_id from 01_infra without a
+    # prior apply this session). Idempotent + quiet so scripted `-raw` output stays clean.
+    terraform init -input=false >/dev/null 2>&1
+
     # 2. Check if there are any arguments left (like -raw or variable_name)
     if [ $# -eq 0 ]; then
       # No arguments provided: Show all outputs with a nice header (for the human)
