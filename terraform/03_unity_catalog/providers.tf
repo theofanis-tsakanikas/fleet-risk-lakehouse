@@ -14,7 +14,7 @@ terraform {
     }
   }
   backend "s3" {
-    bucket  = "generic-terraform-state-eu-central-1"
+    bucket  = "fleet-risk-lakehouse-tfstate-eu-central-1"
     key     = "dev/03-unity-catalog/terraform.tfstate"
     region  = "eu-central-1"
     encrypt = true

@@ -32,7 +32,7 @@ These must exist **before** the Quick Start — Terraform does not bootstrap the
   Service Principal** (client id + secret) — the bootstrap identity Terraform authenticates as.
 
 **AWS bootstrap (manual)**
-- The **Terraform state bucket** `generic-terraform-state-eu-central-1` (region `eu-central-1`,
+- The **Terraform state bucket** `fleet-risk-lakehouse-tfstate-eu-central-1` (region `eu-central-1`,
   encryption on) — `terraform init` fails without it.
 - **Local runs:** an IAM admin user with access keys (in `.env`). **CI:** a **GitHub OIDC
   provider** + an IAM role (the `AWS_DEPLOY_ROLE_ARN` secret) trusted by this repo, with

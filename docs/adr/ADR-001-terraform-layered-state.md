@@ -27,7 +27,7 @@ Separate the platform into three independent Terraform layers, each with its own
 | `02_workspace` | `dev/02-workspace/terraform.tfstate` | SQL Warehouse, metastore-level privilege grants |
 | `03_unity_catalog` | `dev/03-unity-catalog/terraform.tfstate` | Storage credentials, external locations, catalogs, schemas, volumes, grants |
 
-All three state files live in the same S3 bucket (`generic-terraform-state-eu-central-1`) with encryption enabled, but each has an independent lock.
+All three state files live in the same S3 bucket (`fleet-risk-lakehouse-tfstate-eu-central-1`) with encryption enabled, but each has an independent lock.
 
 **Cross-layer wiring** uses `data "terraform_remote_state"` (read-only): layers `02_workspace` and `03_unity_catalog` read `workspace_url`, `metastore_id`, `datalake_role_arn`, and `secrets_manager_id` from layer `01_infra`'s last-applied state. They do not use module composition or share a common provider block — they depend only on the outputs of the previously applied layer.
 
