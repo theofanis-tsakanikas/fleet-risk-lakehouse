@@ -102,6 +102,7 @@ and `make check` reproduces CI locally. The Makefile defaults `PYTHON` to `.venv
 │   ├── ci.yml                        # Trigger: PR + push main — lint + fmt-check + test + govern-check gates
 │   ├── deploy-fleet-pipeline.yml     # Trigger: manual (workflow_dispatch) — full apply + DABs deploy
 │   ├── run-fleet-pipeline.yml        # Trigger: manual (workflow_dispatch) — pick a scenario (mock/real) & run it
+│   ├── destroy-infrastructure.yml    # Trigger: manual (workflow_dispatch) — teardown 03→02→01 (cumulative scope + confirm)
 │   ├── terraform-plan-pr.yml         # Trigger: pull_request — plan all 3 layers, post sticky comments
 │   └── gitleaks.yml                  # Trigger: PR + push — secret scan over full git history
 ├── notebooks/
@@ -288,6 +289,7 @@ causing an authentication failure at Terraform's provider initialization — not
 ./bundle.sh validate   # Validate databricks.yml against the workspace (no-op check)
 ./bundle.sh deploy     # Upload notebooks/src to workspace, register the job definition
 ./bundle.sh run        # Trigger simulated_sensors_job immediately and tail output
+./bundle.sh destroy    # Remove the deployed jobs + uploaded files from the workspace
 ```
 
 `bundle.sh` resolves `DATABRICKS_HOST` and `SPN_ID` at runtime:

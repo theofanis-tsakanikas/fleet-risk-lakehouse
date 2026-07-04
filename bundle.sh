@@ -65,8 +65,12 @@ case $ACTION in
     echo "🏃 Running Job: $BUNDLE_JOB_NAME (target: $BUNDLE_TARGET)..."
     databricks bundle run -t "$BUNDLE_TARGET" "$BUNDLE_JOB_NAME"
     ;;
+  destroy)
+    echo "🔥 Destroying Bundle — removes the deployed jobs + uploaded files (target: $BUNDLE_TARGET)..."
+    databricks bundle destroy -t "$BUNDLE_TARGET" --auto-approve
+    ;;
   *)
-    echo "❌ Usage: ./bundle.sh <validate|deploy|run>   (env: BUNDLE_TARGET=dev|prod, BUNDLE_JOB_NAME=...)"
+    echo "❌ Usage: ./bundle.sh <validate|deploy|run|destroy>   (env: BUNDLE_TARGET=dev|prod, BUNDLE_JOB_NAME=...)"
     exit 1
     ;;
 esac

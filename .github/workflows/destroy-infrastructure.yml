@@ -1,0 +1,116 @@
+name: "Destroy Infrastructure & Pipeline"
+
+# --- 💣 TRIGGER CONFIGURATION ---
+# Manual-only, irreversible. Tears down the selected layers in strict reverse dependency
+# order (03 → 02 → 01). The scope options are cumulative top-down slices, so you can never
+# destroy a lower layer while a higher one still depends on it. A typed confirmation guards
+# against an accidental click.
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "How much to tear down? (always reverse dependency order)"
+        type: choice
+        required: true
+        default: "Unity Catalog only (03)"
+        options:
+          - "Unity Catalog only (03)"
+          - "Unity Catalog + Workspace config (03 -> 02)"
+          - "Everything incl. workspace + bundle (03 -> 02 -> 01)"
+      confirm:
+        description: "Type 'destroy' to confirm — this is irreversible."
+        type: string
+        required: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  id-token: write # OIDC token for aws-actions/configure-aws-credentials
+  contents: read
+
+jobs:
+  destroy:
+    name: "Tear down the selected layers"
+    runs-on: ubuntu-latest
+    environment: production
+
+    env:
+      AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
+      # Needed to destroy layer 01 (account provider + IAM trust policy). Layers 02/03 get the
+      # project-SPN credentials injected from Secrets Manager by terraform.sh (01 still exists
+      # when they are destroyed). No DATABRICKS_HOST: bundle.sh derives it from Terraform.
+      TF_VAR_aws_account_id: ${{ secrets.AWS_ACCOUNT_ID }}
+      TF_VAR_databricks_account_id: ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+      TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_ADMIN_CLIENT_ID }}
+      TF_VAR_databricks_client_secret: ${{ secrets.DATABRICKS_ADMIN_CLIENT_SECRET }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_ADMIN_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_ADMIN_CLIENT_SECRET }}
+
+    steps:
+      - name: "Guard: confirmation must equal 'destroy'"
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          if [ "$CONFIRM" != "destroy" ]; then
+            echo "::error::Confirmation failed — type 'destroy' exactly to proceed. Nothing was touched."
+            exit 1
+          fi
+          echo "Confirmation OK."
+
+      - name: "Checkout Repository"
+        uses: actions/checkout@v4
+
+      - name: "Configure AWS Credentials (OIDC — no long-lived keys)"
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_DEFAULT_REGION }}
+
+      - name: "Read Pinned Terraform Version"
+        id: tfver
+        run: echo "version=$(cat .terraform-version)" >> "$GITHUB_OUTPUT"
+
+      - name: "Setup Terraform Engine (pinned)"
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ steps.tfver.outputs.version }}
+          terraform_wrapper: false
+
+      - name: "Setup Databricks CLI"
+        uses: databricks/setup-cli@f01853f8d6b12678ab0fab76ffad726c460be1a5 # v1.5.0
+
+      - name: "Destroy the selected scope (reverse order)"
+        env:
+          SCOPE: ${{ inputs.scope }}
+        run: |
+          chmod +x terraform.sh bundle.sh
+          echo "Scope: $SCOPE"
+
+          # Cumulative top-down slices. The digits in the label decide how deep we go
+          # (03 is always included; 02 and 01 are added only when present).
+          DO_02=false
+          DO_01=false
+          case "$SCOPE" in *02*) DO_02=true ;; esac
+          case "$SCOPE" in *01*) DO_01=true ;; esac
+
+          echo "🔥 Destroying layer 03 (Unity Catalog: catalogs, schemas, volumes, external locations, credential)..."
+          ./terraform.sh 03_unity_catalog destroy
+
+          if [ "$DO_02" = "true" ]; then
+            echo "🔥 Destroying layer 02 (SQL Warehouse + metastore grants)..."
+            ./terraform.sh 02_workspace destroy
+          fi
+
+          if [ "$DO_01" = "true" ]; then
+            # Remove the DABs jobs while the workspace still exists (cleaner than letting the
+            # workspace deletion nuke them). Non-fatal: if the bundle was never deployed, or
+            # this fails, the layer-01 teardown removes the workspace (and its jobs) anyway.
+            echo "🔥 Destroying the bundle (deployed jobs) before the workspace goes..."
+            ./bundle.sh destroy || echo "⚠️  bundle destroy skipped/failed (non-fatal) — the workspace teardown removes the jobs."
+
+            echo "🔥 Destroying layer 01 (foundation: workspace, metastore, SPNs, S3, IAM, Secrets Manager)..."
+            ./terraform.sh 01_infra destroy
+          fi
+
+          echo "✅ Teardown complete for scope: $SCOPE"
