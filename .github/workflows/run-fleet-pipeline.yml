@@ -43,6 +43,10 @@ jobs:
       # Admin credentials drive the bundle deploy/run.
       DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_ADMIN_CLIENT_ID }}
       DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_ADMIN_CLIENT_SECRET }}
+      # Alerting: passed through to the bundle deploy as vars so the Gold task actually sends
+      # Slack / PagerDuty alerts. Empty/unset => documented no-op.
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      PAGERDUTY_ROUTING_KEY: ${{ secrets.PAGERDUTY_ROUTING_KEY }}
 
     steps:
       - name: "Checkout Repository"

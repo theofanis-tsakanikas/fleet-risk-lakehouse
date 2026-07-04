@@ -20,6 +20,13 @@ BUNDLE_TARGET="${BUNDLE_TARGET:-dev}"
 BUNDLE_OVERRIDE_PATH=".databricks/bundle/$BUNDLE_TARGET"
 BUNDLE_JOB_NAME="${BUNDLE_JOB_NAME:-simulated_sensors_job}"
 
+# Optional alerting overrides — if these are present in the environment (injected from GitHub
+# secrets in CI) they are passed as bundle variables at deploy time so the Gold task actually
+# sends Slack / PagerDuty alerts. Empty => the alerting stays a documented no-op.
+DEPLOY_VARS=()
+[ -n "$SLACK_WEBHOOK_URL" ] && DEPLOY_VARS+=(--var "slack_webhook_url=$SLACK_WEBHOOK_URL")
+[ -n "$PAGERDUTY_ROUTING_KEY" ] && DEPLOY_VARS+=(--var "pagerduty_routing_key=$PAGERDUTY_ROUTING_KEY")
+
 # --- 1. Smart Configuration Discovery ---
 # Fetch DATABRICKS_HOST if not already provided by the environment (e.g. CI/CD)
 if [ -z "$DATABRICKS_HOST" ]; then
@@ -59,7 +66,7 @@ case $ACTION in
     ;;
   deploy)
     echo "🚀 Deploying Bundle (target: $BUNDLE_TARGET)..."
-    databricks bundle deploy -t "$BUNDLE_TARGET" --auto-approve
+    databricks bundle deploy -t "$BUNDLE_TARGET" --auto-approve "${DEPLOY_VARS[@]}"
     ;;
   run)
     echo "🏃 Running Job: $BUNDLE_JOB_NAME (target: $BUNDLE_TARGET)..."
