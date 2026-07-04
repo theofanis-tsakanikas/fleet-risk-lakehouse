@@ -49,7 +49,9 @@ These must exist **before** the Quick Start — Terraform does not bootstrap the
   SPN (`TF_VAR_spn_*`) is injected automatically by `terraform.sh` — never set by hand.
 - **CI** (repo → Settings → Secrets and variables → Actions):
   - Secrets: `AWS_DEPLOY_ROLE_ARN`, `AWS_ACCOUNT_ID`, `DATABRICKS_ACCOUNT_ID`,
-    `DATABRICKS_ADMIN_CLIENT_ID`, `DATABRICKS_ADMIN_CLIENT_SECRET`, `DATABRICKS_HOST`.
+    `DATABRICKS_ADMIN_CLIENT_ID`, `DATABRICKS_ADMIN_CLIENT_SECRET`. (`DATABRICKS_HOST` is **not**
+    stored — the workflows derive the workspace URL from the `01_infra` Terraform output and pass
+    it between jobs, so there is no host to copy-paste after an apply.)
   - Variables: `AWS_DEFAULT_REGION` (e.g. `eu-central-1`).
 
 **Optional (feature-gated — a no-op if omitted)**
@@ -186,7 +188,7 @@ cp .env.example .env
 | `TF_VAR_databricks_client_secret` | `01_infra` | Pre-existing Account Admin SPN secret |
 | `DATABRICKS_CLIENT_ID` | `bundle.sh` (local dev) | Same value as `TF_VAR_databricks_client_id` |
 | `DATABRICKS_CLIENT_SECRET` | `bundle.sh` (local dev) | Same value as `TF_VAR_databricks_client_secret` |
-| `DATABRICKS_HOST` | `bundle.sh`, notebooks | `workspace_url` output from `01_infra`; set automatically in CI |
+| `DATABRICKS_HOST` | `bundle.sh`, notebooks | Derived from the `workspace_url` output of `01_infra` — **never a stored secret**. In CI the deploy job passes it to the bundle job as an output; `bundle.sh` otherwise fetches it from Terraform. Set it by hand only for a standalone local run. |
 | `DATA_LAKE_BUCKET` | Mock generators | S3 bucket name (`dbx-data-lake-bucket`) |
 | `S3_FOLDER_WATCHES` / `S3_FOLDER_TRACKERS` | Mock generators | Landing zone S3 paths |
 | `WATCHES_CATALOG` / `TRACKERS_CATALOG` / `GOLD_CATALOG` | Notebooks | Unity Catalog catalog names |

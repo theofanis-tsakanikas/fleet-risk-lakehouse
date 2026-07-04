@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 18 new tests (138 total): replay parsing against the real sample, harsh-brake detection, biometric determinism/decay, tick-grid alignment, a real-data end-to-end (replayed trips → production Silver → non-empty Gold enriched view), aggregate/quarantine masking, and the aggregate classification contract.
 
 ### Changed
+- **`DATABRICKS_HOST` is no longer a stored secret** — the deploy workflow derives the workspace URL from the `01_infra` `workspace_url` Terraform output and passes it to the bundle-deploy job as a job output; the run workflow lets `bundle.sh` fetch it from Terraform (it already sets up AWS OIDC + Terraform). This removes the one manual copy-paste-after-apply step, so a full deploy needs no post-apply human action.
 - Renamed the Terraform remote-state S3 bucket `generic-terraform-state-eu-central-1` → `fleet-risk-lakehouse-tfstate-eu-central-1` (project-specific, less likely to collide in the global S3 namespace) across all three layers' backend blocks, the two `terraform_remote_state` data sources, ADR-001, and CLAUDE.md.
 - `live_status_select_sql` now enumerates the classified Gold contract columns instead of Databricks-only `SELECT * EXCEPT(rn)` — the exact production SQL runs verbatim on OSS Spark (test hack removed).
 - `setup.sh` creates the **test** environment (`.venv` ← `requirements-dev.txt`); the conflicting Databricks Connect env is opt-in (`--connect` → `.venv-connect`) — following the documented setup then `make test` now works.

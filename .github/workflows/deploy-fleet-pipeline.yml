@@ -21,9 +21,10 @@ jobs:
     name: "1. Terraform Deployment"
     runs-on: ubuntu-latest
 
-    # Define outputs to pass data (like the new SPN ID) to subsequent jobs
+    # Define outputs to pass data (SPN id + workspace URL) to subsequent jobs
     outputs:
       project_spn_id: ${{ steps.get_outputs.outputs.SPN_ID }}
+      workspace_url: ${{ steps.get_outputs.outputs.WORKSPACE_URL }}
     
     # Deploy is manual-only (workflow_dispatch is the sole trigger). A required-reviewer
     # gate on this `production` environment needs GitHub Pro+ for private repos; until
@@ -38,7 +39,9 @@ jobs:
       TF_VAR_databricks_account_id: ${{ secrets.DATABRICKS_ACCOUNT_ID }}
       TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_ADMIN_CLIENT_ID }}
       TF_VAR_databricks_client_secret: ${{ secrets.DATABRICKS_ADMIN_CLIENT_SECRET }}
-      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      # No DATABRICKS_HOST here: layer 01 creates the workspace, and its providers set their
+      # host explicitly (account provider → accounts.cloud.databricks.com; layers 02/03 read
+      # workspace_url from remote state). The URL is derived below and handed to the deploy job.
 
     steps:
       - name: "Checkout Repository"
@@ -72,21 +75,26 @@ jobs:
           ./terraform.sh 02_workspace apply
           ./terraform.sh 03_unity_catalog apply
 
-      - name: "Extract Generated Project SPN ID"
+      - name: "Extract Terraform Outputs (SPN id + workspace URL)"
         id: get_outputs
         working-directory: .
         run: |
 
-          # Fetch the ID and remove any hidden characters
+          # The workspace URL only exists after 01_infra creates the workspace, so we derive it
+          # here and pass it to the deploy job as an output — no manual DATABRICKS_HOST secret to
+          # copy-paste after every apply. Strip any hidden characters from both values.
           ID=$(terraform -chdir=terraform/01_infra output -raw spn_application_id | tr -d '[:space:]')
+          HOST=$(terraform -chdir=terraform/01_infra output -raw workspace_url | tr -d '[:space:]')
 
-          if [ -z "$ID" ]; then
-            echo "❌ ERROR: Could not fetch SPN ID" 
+          if [ -z "$ID" ] || [ -z "$HOST" ]; then
+            echo "❌ ERROR: Could not fetch SPN id / workspace URL from Terraform outputs"
             exit 1
           fi
-          
+
           echo "Extracted SPN: $ID"
+          echo "Extracted workspace URL: $HOST"
           echo "SPN_ID=$ID" >> "$GITHUB_OUTPUT"
+          echo "WORKSPACE_URL=$HOST" >> "$GITHUB_OUTPUT"
 
 
   # --- 📦 JOB 2: DATABRICKS ASSET BUNDLE DEPLOY ---
@@ -108,10 +116,11 @@ jobs:
 
       - name: "Deploy Bundle via Hybrid Script"
         env:
-          # Inject the SPN ID from the Infrastructure Job into the environment
-          # The bundle.sh script will detect this and skip local Terraform fetching
+          # Inject the SPN ID + workspace URL from the Infrastructure Job into the environment.
+          # The bundle.sh script detects these and skips its local Terraform fetching.
           SPN_ID: ${{ needs.infrastructure.outputs.project_spn_id }}
-          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          # Derived from the Terraform output by job 1 — no manual DATABRICKS_HOST secret needed.
+          DATABRICKS_HOST: ${{ needs.infrastructure.outputs.workspace_url }}
           
           # Use Admin credentials for the deployment process itself
           DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_ADMIN_CLIENT_ID }}

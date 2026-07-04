@@ -38,9 +38,9 @@ jobs:
 
     env:
       AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
-      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-      # Admin credentials drive the bundle deploy/run; the project SPN id is fetched from
-      # Terraform outputs by bundle.sh (no project-SPN secret to maintain).
+      # No DATABRICKS_HOST / SPN_ID here: bundle.sh derives both from the Terraform outputs
+      # (this job sets up AWS OIDC + Terraform), so there is no host secret to maintain.
+      # Admin credentials drive the bundle deploy/run.
       DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_ADMIN_CLIENT_ID }}
       DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_ADMIN_CLIENT_SECRET }}
 
