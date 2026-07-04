@@ -118,9 +118,17 @@ resource "grafana_dashboard" "fleet_operations" {
         options = {
           view     = { id = "coords", lat = 38.0, lon = 23.75, zoom = 8, allLayers = true }
           controls = { showZoom = true, mouseWheelZoom = true, showAttribution = true, showScale = false }
-          # Dark CARTO basemap with place labels OFF — matches the dark dashboard and sidesteps the
-          # local-language label issue entirely (markers are the focus).
-          basemap = { type = "carto", name = "CARTO", config = { theme = "dark", showLabels = false } }
+          # Explicit dark, label-free XYZ tiles (CARTO "dark_nolabels"). The built-in `carto` basemap
+          # type ignored theme/showLabels on AMG 10.4, so we point straight at the tile URL — a dark
+          # map with no place names, which matches the dashboard and drops the local-language issue.
+          basemap = {
+            type = "xyz"
+            name = "CARTO Dark (no labels)"
+            config = {
+              url         = "https://a.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png"
+              attribution = "© OpenStreetMap contributors, © CARTO"
+            }
+          }
           layers = [{
             type     = "markers"
             name     = "Trucks"
