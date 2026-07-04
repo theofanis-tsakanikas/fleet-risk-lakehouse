@@ -25,6 +25,11 @@ output "spn_id" {
   value       = databricks_service_principal.automation_sp.id
 }
 
+output "bi_reader_application_id" {
+  description = "The Application (Client) ID of the read-only BI (Grafana/Streamlit) Service Principal"
+  value       = databricks_service_principal.bi_reader.application_id
+}
+
 
 # --- 👥 3. Groups Outputs ---
 output "admin_group_id" {

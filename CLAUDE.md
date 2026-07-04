@@ -340,8 +340,14 @@ Warehouse** provisioned by layer `02_workspace` (`serverless_bi-dev`, a serverle
 **Connecting Grafana to the warehouse:**
 1. Install the [Grafana Databricks data source plugin](https://grafana.com/grafana/plugins/grafana-databricks-datasource/).
 2. In Databricks UI: SQL Warehouses → `serverless_bi-dev` → **Connection Details** → copy the HTTP Path.
-3. Configure the data source: Host = `DATABRICKS_HOST`, HTTP Path from step 2, auth = SPN OAuth
-   (client ID + secret from `.env`) or a Personal Access Token.
+3. Configure the data source: Host = the workspace URL, HTTP Path from step 2, auth = **SPN OAuth**
+   using the dedicated **read-only BI Service Principal** (`grafana-bi-reader-dev`) — its client id
+   is the `01_infra` output `bi_reader_application_id`, and its secret is stored in AWS Secrets
+   Manager under the key `bi_reader_client_secret`. This SPN is **not** an account admin: it is a
+   member of `data_analysts` (inheriting `SELECT` on `fleet_dev.operations` + warehouse usage) and
+   is **not** in `fleet_safety_officers`, so Grafana sees risk scores / alerts / coarse location
+   but the raw biometrics stay masked (the GDPR posture — to show raw biometrics, add this SPN to
+   `fleet_safety_officers`). A Personal Access Token also works for a quick local setup.
 4. Default catalog: `fleet_dev`, schema: `operations`.
 
 The warehouse auto-stops after 10 minutes of inactivity. The first Grafana query after an idle

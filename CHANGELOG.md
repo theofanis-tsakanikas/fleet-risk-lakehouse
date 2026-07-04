@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Dedicated read-only BI Service Principal** (`grafana-bi-reader-<env>`) for Grafana/Streamlit, created in layer 01: **not** an account admin, it inherits exactly analyst-level read access (USE_CATALOG + USE_SCHEMA + SELECT on `fleet_dev.operations` + SQL-warehouse usage) purely by membership of the `data_analysts` group — no bespoke grants, no changes to layers 02/03. It is deliberately **not** in `fleet_safety_officers`, so the dashboards respect the GDPR masks (risk scores / alerts / coarse location shown; raw biometrics masked). Its OAuth secret is stored alongside the project SPN in Secrets Manager (`bi_reader_client_id` / `bi_reader_client_secret`), and its client id is exposed as the `bi_reader_application_id` output.
 - **Auto-add the project SPN to the masking privileged group**: layer 01 now looks up the
   account-level `mask_privileged_group` (`fleet_safety_officers`) via a data source and adds the
   Terraform-created project SPN to it, so the pipeline's own observability reads (biometric

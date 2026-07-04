@@ -22,8 +22,10 @@ resource "databricks_service_principal_secret" "sp_secret" {
 resource "aws_secretsmanager_secret_version" "spn_creds_value" {
   secret_id = var.spn_secret_arn
   secret_string = jsonencode({
-    spn_client_id     = databricks_service_principal.automation_sp.application_id
-    spn_client_secret = databricks_service_principal_secret.sp_secret.secret
+    spn_client_id           = databricks_service_principal.automation_sp.application_id
+    spn_client_secret       = databricks_service_principal_secret.sp_secret.secret
+    bi_reader_client_id     = databricks_service_principal.bi_reader.application_id
+    bi_reader_client_secret = databricks_service_principal_secret.bi_reader_secret.secret
   })
 }
 
@@ -99,6 +101,28 @@ data "databricks_group" "mask_privileged" {
 resource "databricks_group_member" "spn_mask_privileged" {
   group_id  = data.databricks_group.mask_privileged.id
   member_id = databricks_service_principal.automation_sp.id
+}
+
+
+# --- 📊 6. BI READER SPN (read-only — for Grafana / Streamlit) ---
+# A dedicated, least-privilege identity for the dashboards: NOT account admin. It inherits
+# analyst-level read access (USE_CATALOG + USE_SCHEMA + SELECT on the Gold catalog/schema, plus
+# SQL-warehouse usage) purely by membership of the `data_analysts` group — no bespoke grants and
+# no changes to layers 02/03. It is deliberately NOT in the mask_privileged_group, so the
+# dashboards respect the GDPR masks (risk scores, alerts, speed and coarse location are shown;
+# raw biometrics stay masked). Its OAuth secret is stored alongside the project SPN in Secrets
+# Manager (keys `bi_reader_client_id` / `bi_reader_client_secret`) for the BI tool to read.
+resource "databricks_service_principal" "bi_reader" {
+  display_name = "grafana-bi-reader-${var.environment}"
+}
+
+resource "databricks_service_principal_secret" "bi_reader_secret" {
+  service_principal_id = databricks_service_principal.bi_reader.id
+}
+
+resource "databricks_group_member" "bi_reader_analyst" {
+  group_id  = databricks_group.functional_groups["data_analysts"].id
+  member_id = databricks_service_principal.bi_reader.id
 }
 
 

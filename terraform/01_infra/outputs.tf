@@ -91,6 +91,11 @@ output "spn_id" {
   value       = module.databricks_account.spn_id
 }
 
+output "bi_reader_application_id" {
+  description = "Client ID of the read-only BI (Grafana/Streamlit) Service Principal; its secret is in Secrets Manager (bi_reader_client_secret)"
+  value       = module.databricks_account.bi_reader_application_id
+}
+
 
 # --- 👥 3. Groups Outputs ---
 output "admin_group_id" {
