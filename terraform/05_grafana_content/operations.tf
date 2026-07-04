@@ -118,17 +118,12 @@ resource "grafana_dashboard" "fleet_operations" {
         options = {
           view     = { id = "coords", lat = 38.0, lon = 23.75, zoom = 8, allLayers = true }
           controls = { showZoom = true, mouseWheelZoom = true, showAttribution = true, showScale = false }
-          # Explicit dark, label-free XYZ tiles (CARTO "dark_nolabels"). The built-in `carto` basemap
-          # type ignored theme/showLabels on AMG 10.4, so we point straight at the tile URL — a dark
-          # map with no place names, which matches the dashboard and drops the local-language issue.
-          basemap = {
-            type = "xyz"
-            name = "CARTO Dark (no labels)"
-            config = {
-              url         = "https://a.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png"
-              attribution = "© OpenStreetMap contributors, © CARTO"
-            }
-          }
+          # NOTE: Amazon Managed Grafana pins its own basemap tiles and sets
+          # geomapDisableCustomBaseLayer = true at the instance level, so ANY custom basemap set here
+          # (dark / no-labels / XYZ) is ignored — the map always renders with AMG's light OSM tiles
+          # (local-language place labels). We keep the default; a dark, label-free base would require
+          # a community Leaflet map-panel plugin (deliberately not pursued to keep the stack simple).
+          basemap = { type = "default", name = "Basemap" }
           layers = [{
             type     = "markers"
             name     = "Trucks"
