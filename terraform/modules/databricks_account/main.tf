@@ -128,10 +128,14 @@ resource "databricks_group_member" "bi_reader_analyst" {
 
 # --- 🧠 4. UNITY CATALOG METASTORE ---
 resource "databricks_metastore" "this" {
-  name          = var.metastore_name
-  storage_root  = var.metastore_storage_root
-  region        = var.region
-  force_destroy = false
+  name         = var.metastore_name
+  storage_root = var.metastore_storage_root
+  region       = var.region
+  # true so `terraform destroy` can tear the metastore down together with its default (root)
+  # data access — otherwise the destroy fails with "Storage credential 'metastore-data-access'
+  # cannot be deleted because it is configured as this metastore's root credential". The
+  # Destroy workflow's typed-confirm guard is the safety control against an accidental teardown.
+  force_destroy = true
 
   delta_sharing_organization_name                   = var.delta_sharing_name
   delta_sharing_scope                               = "INTERNAL_AND_EXTERNAL"
