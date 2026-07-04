@@ -156,9 +156,11 @@ and `make check` reproduces CI locally. The Makefile defaults `PYTHON` to `.venv
 │   ├── 01_infra/                      # AWS: S3, IAM, Secrets Manager, SPN, Metastore, Workspace
 │   ├── 02_workspace/                  # Databricks: SQL Warehouse, metastore-level grants
 │   ├── 03_unity_catalog/              # UC: storage credentials, external locations, catalogs, schemas, volumes
-│   └── modules/                       # Reusable modules consumed by the 3 layers above
+│   ├── 04_grafana/                    # Amazon Managed Grafana workspace (ops monitoring; create/destroy standalone)
+│   └── modules/                       # Reusable modules consumed by the layers above
 │       ├── aws_foundation/            # S3 buckets + Secrets Manager
 │       ├── aws_iam/                   # IAM roles for data lake and metastore
+│       ├── aws_grafana/               # Amazon Managed Grafana workspace + IAM role + SSO admin association
 │       ├── databricks_account/        # SPN, admin group, metastore
 │       ├── databricks_workspace/      # Workspace resource + NCC
 │       ├── databricks_workspace_config/  # SQL Warehouse + grants
