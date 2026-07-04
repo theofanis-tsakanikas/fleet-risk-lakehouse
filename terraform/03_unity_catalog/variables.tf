@@ -176,8 +176,12 @@ variable "catalogs" {
           volumes = {}
         }
         "metadata" = {
-          comment = "Checkpoints for Gold Layer processing"
-          grants  = { "data_engineers" = ["USE_SCHEMA", "CREATE_VOLUME"], "metastore_admins" = ["ALL_PRIVILEGES"] }
+          comment = "Checkpoints for Gold Layer processing + the pipeline_metrics observability fact"
+          # data_analysts get USE_SCHEMA + SELECT so the read-only BI SPN (Grafana/Streamlit) can
+          # read fleet_dev.metadata.pipeline_metrics. The schema holds only that operational fact
+          # table (no Art. 9 biometrics); the checkpoint *volume* stays engineer-only (separate
+          # READ_VOLUME securable), so analysts see the metrics table but not the checkpoints.
+          grants = { "data_engineers" = ["USE_SCHEMA", "CREATE_VOLUME"], "data_analysts" = ["USE_SCHEMA", "SELECT"], "metastore_admins" = ["ALL_PRIVILEGES"] }
           volumes = {
             "checkpoints" = {
               volume_type = "MANAGED"

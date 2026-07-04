@@ -156,7 +156,8 @@ and `make check` reproduces CI locally. The Makefile defaults `PYTHON` to `.venv
 │   ├── 01_infra/                      # AWS: S3, IAM, Secrets Manager, SPN, Metastore, Workspace
 │   ├── 02_workspace/                  # Databricks: SQL Warehouse, metastore-level grants
 │   ├── 03_unity_catalog/              # UC: storage credentials, external locations, catalogs, schemas, volumes
-│   ├── 04_grafana/                    # Amazon Managed Grafana workspace (ops monitoring; create/destroy standalone)
+│   ├── 04_grafana/                    # Amazon Managed Grafana workspace + service-account token + Infinity plugin install (standalone)
+│   ├── 05_grafana_content/            # Grafana datasource (Databricks-over-Infinity) + pipeline-observability dashboard, as code
 │   └── modules/                       # Reusable modules consumed by the layers above
 │       ├── aws_foundation/            # S3 buckets + Secrets Manager
 │       ├── aws_iam/                   # IAM roles for data lake and metastore
@@ -338,24 +339,39 @@ layer `03_unity_catalog`. Override them per-target by editing the `targets` sect
 
 ## Grafana Setup
 
-Grafana does **not** run locally as a separate process. It connects to the **Databricks SQL
-Warehouse** provisioned by layer `02_workspace` (`serverless_bi-dev`, a serverless PRO warehouse).
+Grafana does **not** run locally. It is **Amazon Managed Grafana** (layer `04_grafana`), and the
+datasource + dashboards are **provisioned as code** (layer `05_grafana_content`) — there is **no
+manual UI setup**. `terraform apply` on those two layers reproduces the whole thing. See
+[ADR-010](docs/adr/ADR-010-grafana-infinity-datasource.md).
 
-**Connecting Grafana to the warehouse:**
-1. Install the [Grafana Databricks data source plugin](https://grafana.com/grafana/plugins/grafana-databricks-datasource/).
-2. In Databricks UI: SQL Warehouses → `serverless_bi-dev` → **Connection Details** → copy the HTTP Path.
-3. Configure the data source: Host = the workspace URL, HTTP Path from step 2, auth = **SPN OAuth**
-   using the dedicated **read-only BI Service Principal** (`grafana-bi-reader-dev`) — its client id
-   is the `01_infra` output `bi_reader_application_id`, and its secret is stored in AWS Secrets
-   Manager under the key `bi_reader_client_secret`. This SPN is **not** an account admin: it is a
-   member of `data_analysts` (inheriting `SELECT` on `fleet_dev.operations` + warehouse usage) and
-   is **not** in `fleet_safety_officers`, so Grafana sees risk scores / alerts / coarse location
-   but the raw biometrics stay masked (the GDPR posture — to show raw biometrics, add this SPN to
-   `fleet_safety_officers`). A Personal Access Token also works for a quick local setup.
-4. Default catalog: `fleet_dev`, schema: `operations`.
+**How it connects (no Enterprise plugin):** the official Grafana Databricks plugin is Enterprise-only
+(+$45/active user/mo on AMG), so instead the dashboards query through the **free OSS
+[Infinity](https://grafana.com/grafana/plugins/yesoreyeram-infinity-datasource/) datasource**, which
+POSTs SQL to the Databricks **SQL Statement Execution REST API** (`/api/2.0/sql/statements`) against
+the `serverless_bi-dev` warehouse (layer `02_workspace`). Auth is **OAuth2 machine-to-machine** with
+the read-only BI SPN (`grafana-bi-reader-dev`): client id = the `01_infra` output
+`bi_reader_application_id`, secret = AWS Secrets Manager key `bi_reader_client_secret`, token URL
+`…/oidc/v1/token`, scope `all-apis`. That SPN is **not** an account admin — a `data_analysts` member
+with `SELECT` on `fleet_dev.operations` **and** `fleet_dev.metadata` (the `pipeline_metrics` fact),
+and **not** in `fleet_safety_officers` — so Grafana sees risk scores / drift / counts / coarse
+location but **raw biometrics stay masked** (to show them, add the SPN to `fleet_safety_officers`).
 
-The warehouse auto-stops after 10 minutes of inactivity. The first Grafana query after an idle
-period will incur a ~20–30 second cold start while the warehouse resumes.
+**Deploy / tear down (standalone from the 01→02→03 stack):**
+
+```bash
+export TF_VAR_grafana_admin_user_id=<your IAM Identity Center user id>  # ADMIN login grant
+./terraform.sh 04_grafana apply          # workspace + service-account token + Infinity plugin install
+./terraform.sh 05_grafana_content apply  # Infinity datasource + the pipeline-observability dashboard
+# ... or `make grafana-up`  /  `make grafana-down` (reverse order). 04+05 need 01/02/03 already applied.
+```
+
+Layer 05 authenticates the `grafana` provider with the **ADMIN service-account token** layer 04
+emits (a 30-day token — re-apply layer 04 to rotate, then layer 05). The Infinity queries use the
+**backend** parser (server-side), so they also work for Grafana alerting; the frontend UQL parser
+does **not** (browser-only). Login to the workspace is via **IAM Identity Center (SSO)**.
+
+The warehouse auto-stops after 10 minutes of inactivity; the first Grafana query after an idle period
+incurs a ~20–30 second cold start while it resumes.
 
 **Running Grafana locally (without Databricks):** Not supported. Grafana requires a live SQL
 Warehouse endpoint; there is no embedded or mocked backend.

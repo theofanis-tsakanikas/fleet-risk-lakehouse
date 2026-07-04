@@ -16,3 +16,9 @@ variable "admin_user_id" {
   description = "The IAM Identity Center user id to grant Grafana ADMIN (for login + setup)"
   type        = string
 }
+
+variable "infinity_plugin_version" {
+  description = "Version of the OSS Infinity datasource plugin to install (empty = AMG-selected latest compatible)."
+  type        = string
+  default     = ""
+}

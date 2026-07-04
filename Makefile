@@ -119,6 +119,16 @@ infra-down: ## Destroy all 3 layers in reverse order (03 → 02 → 01)
 	./terraform.sh 02_workspace destroy
 	./terraform.sh 01_infra destroy
 
+.PHONY: grafana-up
+grafana-up: ## Deploy Grafana workspace + datasource + dashboards (04 → 05). Needs TF_VAR_grafana_admin_user_id + 01/02/03 applied.
+	./terraform.sh 04_grafana apply
+	./terraform.sh 05_grafana_content apply
+
+.PHONY: grafana-down
+grafana-down: ## Tear down Grafana content + workspace in reverse order (05 → 04)
+	./terraform.sh 05_grafana_content destroy
+	./terraform.sh 04_grafana destroy
+
 # ==============================================================================
 # Data pipeline — Databricks Asset Bundle (delegates to bundle.sh)
 # ==============================================================================

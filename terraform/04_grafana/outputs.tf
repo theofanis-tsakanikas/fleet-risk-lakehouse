@@ -12,3 +12,14 @@ output "grafana_version" {
   description = "The Grafana version running in the workspace"
   value       = module.grafana.grafana_version
 }
+
+output "grafana_endpoint_host" {
+  description = "The Grafana endpoint host (no scheme) — consumed by layer 05's Grafana provider"
+  value       = module.grafana.grafana_endpoint_host
+}
+
+output "service_account_token" {
+  description = "Grafana ADMIN service-account token — consumed by layer 05 via remote state"
+  value       = module.grafana.service_account_token
+  sensitive   = true
+}
