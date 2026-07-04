@@ -17,7 +17,7 @@ PYTHON ?= .venv/bin/python
 
 # ruff format / lint scope — kept identical to .github/workflows/ci.yml so
 # `make fmt-check` and the CI gate never disagree.
-FMT_SCOPE := src/fleet_transforms src/fleet_governance src/replay src/mock_generator/generators.py tests
+FMT_SCOPE := src/fleet_transforms src/fleet_governance src/fleet_alerting src/replay src/mock_generator/generators.py tests
 
 .DEFAULT_GOAL := help
 

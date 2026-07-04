@@ -75,6 +75,13 @@ variables:
   # set to UNPAUSED to run the pipeline continuously every 30 minutes.
   replay_pause_status:
     default: "PAUSED"
+  # Alerting (ADR-009): push CRITICAL/DANGER alerts to Slack + PagerDuty from the Gold run.
+  # Empty by default => no-op (the pipeline logs what it *would* have sent). In production,
+  # inject via a Databricks secret scope, e.g. slack_webhook_url: "{{secrets/fleet/slack}}".
+  slack_webhook_url:
+    default: ""
+  pagerduty_routing_key:
+    default: ""
 
 # --- TARGET ENVIRONMENTS ---
 targets:
@@ -250,6 +257,9 @@ resources:
               GOLD_ALERTS_TABLE: ${var.gold_alerts_table}
               # Governance: group that sees unmasked biometric / precise-location values
               MASK_PRIVILEGED_GROUP: ${var.mask_privileged_group}
+              # Alerting (ADR-009): empty => no-op. Inject real values via a secret scope in prod.
+              SLACK_WEBHOOK_URL: ${var.slack_webhook_url}
+              PAGERDUTY_ROUTING_KEY: ${var.pagerduty_routing_key}
               # Source Silver Metadata (for dynamic SQL joining)
               WATCHES_CATALOG: ${var.watches_catalog}
               WATCHES_SILVER_SCHEMA: ${var.watches_silver_schema}

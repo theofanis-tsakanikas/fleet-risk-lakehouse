@@ -81,6 +81,9 @@ and `make check` reproduces CI locally. The Makefile defaults `PYTHON` to `.venv
 │   ├── classification.py              # Gold column classification (biometrics = GDPR Art. 9 special category)
 │   ├── masking.py                     # Enforced UC column masks (biometrics + location), derived from classification
 │   └── generate.py                    # Generates docs/governance/ (risk model card + GDPR Art. 30 record)
+├── src/fleet_alerting/                # Push safety alerts (Slack + PagerDuty) from the pipeline — ADR-009
+│   ├── alerts.py                      # Pure: severity routing + Slack/PagerDuty payloads (no Art. 9 data)
+│   └── dispatch.py                    # Config + delivery adapters (urllib, dry-run, best-effort)
 ├── src/mock_generator/                # Python IoT simulators (CSV trackers, JSON watches)
 │   ├── fleet_config.json              # 10 driver / truck / watch device mappings
 │   ├── generators.py                  # Pure, unit-tested event generators (dirty-data injection logic)
@@ -94,7 +97,7 @@ and `make check` reproduces CI locally. The Makefile defaults `PYTHON` to `.venv
 ├── data/ved/                          # Committed REAL sample (10 vehicles, 18 trips) + attribution README
 ├── scripts/fetch_ved.py               # Pull the full VED dataset into data/ved/full/ (gitignored)
 ├── docs/governance/                   # Generated: RISK_MODEL_CARD.md + DATA_PROCESSING_RECORD.md (CI --check)
-├── docs/adr/                          # ADR-001..008 (layered state, join window, BI, micro-batch, DQ, SCD2, masking, replay)
+├── docs/adr/                          # ADR-001..009 (layered state, join window, BI, micro-batch, DQ, SCD2, masking, replay, alerting)
 ├── docs/architecture.md               # Mermaid diagrams (data flow, Gold gates, Terraform layers)
 ├── docs/RUNBOOK.md                    # Ops: latency/cost, observability, incidents, recovery
 ├── docs/SCALING.md                    # What changes (and doesn't) from 10 → 10,000 drivers
@@ -334,7 +337,7 @@ danger threshold). See [ADR-002](docs/adr/ADR-002-temporal-join-window.md) and
 
 ### Gold-layer quality, governance & observability (beyond the joins)
 
-The `gold_fleet_enrichment` task wraps the enrichment with four cross-cutting concerns, each
+The `gold_fleet_enrichment` task wraps the enrichment with five cross-cutting concerns, each
 backed by a pure, unit-tested module under `src/` (the notebook only orchestrates):
 
 - **Declarative data quality** (`quality.py` + `gold.live_status_expectations`): named SQL
@@ -354,6 +357,11 @@ backed by a pure, unit-tested module under `src/` (the notebook only orchestrate
   (row counts, `join_match_rate`, quarantine count, `risk_score_psi`, band distribution) for
   Grafana. `build_dim_driver` adds SCD2 assignment history — see
   [ADR-006](docs/adr/ADR-006-scd2-driver-dimension.md).
+- **Push alerting** (`fleet_alerting/`): CRITICAL/DANGER alerts are pushed from the run to
+  Slack + PagerDuty (severity-routed, deduplicated), event-driven rather than via Grafana
+  polling. Only allowlisted operational/derived fields are sent — **no Art. 9 biometrics leave
+  the platform** — and delivery is best-effort (records `alerts_dispatch_errors`, never fails
+  the run). See [ADR-009](docs/adr/ADR-009-alert-notifications.md).
 
 > The risk score is computed once via micro-batch recompute (not continuous streaming) — see
 > [ADR-004](docs/adr/ADR-004-micro-batch-execution.md). For ops, see

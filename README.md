@@ -56,7 +56,8 @@ A portfolio piece showcasing production-grade data and platform engineering prac
 * **Biometric data governance (GDPR), enforced** — heart rate and stress are classified as **special-category data (Art. 9)** in code; a CI test fails if any Gold column is left unclassified, and **Unity Catalog column masks** enforce it (biometrics NULLed, location coarsened) for principals outside the privileged group — on **every** Gold surface carrying the data: the live table, the alerts log, the DQ quarantine side table, and the per-driver aggregates (aggregation does not de-identify). A GDPR Art. 30 processing record + data dictionary are generated from the code. See [ADR-007](./docs/adr/ADR-007-column-masking.md) and [docs/governance/](docs/governance/README.md).
 * **Dimensional history (SCD Type 2)** — a `dim_driver` slowly-changing dimension versions each driver→truck assignment over time (Delta `MERGE`). See [ADR-006](./docs/adr/ADR-006-scd2-driver-dimension.md).
 * **Pipeline self-observability & drift** — an append-only `pipeline_metrics` fact (row counts, join match rate, quarantine count, risk-score PSI, band distribution) for Grafana, plus risk-score distribution **drift** detection (a WARN signal, not a failure).
-* **CI/CD automation** — sticky Terraform `plan` comments on pull requests; a manual (`workflow_dispatch`) full-`apply` deploy that injects live Terraform outputs into the Databricks Asset Bundle; gitleaks secret scanning; and a local test suite (**138 tests**) gating every push.
+* **Push alerting (Slack + PagerDuty)** — CRITICAL/DANGER alerts are pushed **from the pipeline** (not by Grafana polling) to Slack for team awareness and PagerDuty for on-call escalation, severity-routed and deduplicated. Only operational/derived fields are sent — **special-category biometrics never leave the platform**. See [ADR-009](./docs/adr/ADR-009-alert-notifications.md).
+* **CI/CD automation** — sticky Terraform `plan` comments on pull requests; a manual (`workflow_dispatch`) full-`apply` deploy that injects live Terraform outputs into the Databricks Asset Bundle; gitleaks secret scanning; and a local test suite (**161 tests**) gating every push.
 * **One discoverable interface** — a [`Makefile`](./Makefile) front door (`make help`) wraps the shell scripts and bundles the exact CI gates (`make check`).
 
 ---
@@ -71,6 +72,7 @@ The platform implements a robust **Medallion Architecture**, providing full data
 * **Engine:** Apache Spark (Structured Streaming) & Python; pure, unit-tested transform logic under `src/`.
 * **CI/CD & Automation:** GitHub Actions, Terraform, Bash, a `Makefile` front door.
 * **Observability:** Grafana dashboards and a Streamlit "Fleet Safety Command Center" (`app/`) over a serverless Databricks SQL Warehouse, fed by a `pipeline_metrics` fact. The Streamlit app also runs fully offline in a faithful demo mode (same risk formula, no cloud).
+* **Alerting:** pipeline-triggered push notifications to Slack (team awareness) + PagerDuty (on-call escalation) — severity-routed, deduplicated, and biometric-safe (no special-category data leaves the platform). See [ADR-009](./docs/adr/ADR-009-alert-notifications.md).
 
 > 🎥 **[ TO RE-RECORD ]** — *System Architecture diagram*
 > The live, code-versioned Mermaid diagrams (data flow, Gold quality/governance gates, Terraform layers) are in **[docs/architecture.md](./docs/architecture.md)** — render those, or capture a polished diagram. (The previous `images/architecture.png` predates the 8-task DAG and the governance/quality additions.)
@@ -92,17 +94,18 @@ fleet-risk-lakehouse/
 │   │                          # quality (expectations), observability, dimensions (SCD2), drift (PSI)
 │   ├── fleet_governance/      # classification (GDPR Art. 9), masking (UC column masks), generate (docs)
 │   ├── mock_generator/        # IoT simulation engine (intentional dirty-data injection)
-│   └── replay/                # Real-data replay: VED parsing, event-conditioned biometrics, producer
+│   ├── replay/                # Real-data replay: VED parsing, event-conditioned biometrics, producer
+│   └── alerting/              # Push safety alerts to Slack + PagerDuty from the pipeline (ADR-009)
 ├── app/                       # Streamlit "Fleet Safety Command Center" (offline demo or live Databricks SQL)
 ├── data/ved/                  # Committed real VED sample (10 vehicles, 18 trips) + attribution
 ├── scripts/                   # fetch_ved.py — pull the full VED dataset (gitignored)
 ├── docs/
-│   ├── adr/                   # ADR-001..008 (state, join window, BI, micro-batch, DQ, SCD2, masking, replay)
+│   ├── adr/                   # ADR-001..009 (state, join window, BI, micro-batch, DQ, SCD2, masking, replay, alerting)
 │   ├── governance/            # Generated risk model card + GDPR Art. 30 processing record
 │   ├── architecture.md        # Mermaid diagrams
 │   ├── RUNBOOK.md             # Ops: latency/cost, observability, incidents, recovery
 │   └── SCALING.md             # What changes from 10 → 10,000 drivers
-├── tests/                     # 138 tests (pure-Python + local PySpark)
+├── tests/                     # 161 tests (pure-Python + local PySpark)
 ├── databricks.yml             # DABs bundle: 2 jobs (mock + real-data replay), variables, targets
 ├── Makefile                   # Front door: `make help`
 ├── terraform.sh / bundle.sh / setup.sh   # Layer orchestrator / DABs bridge / local bootstrap
@@ -204,7 +207,7 @@ make deploy | run          # delegates to bundle.sh
 GitHub Actions bridges Terraform and Databricks Asset Bundles: a PR plan workflow (sticky comments per layer), a local test-suite gate, gitleaks secret scanning, and a manual (`workflow_dispatch`) deploy that captures dynamic Terraform outputs (e.g. Service Principal IDs) and injects them into the bundle deploy.
 
 > 🎥 **[ TO RE-RECORD ]** — *GitHub Actions run*
-> Capture a green CI run (lint + 138 tests + govern-check) and/or the multi-job deploy workflow.
+> Capture a green CI run (lint + 161 tests + govern-check) and/or the multi-job deploy workflow.
 
 **3. 🛠️ The `terraform.sh` Orchestrator**
 A custom utility that **automates secret injection** (fetches SPN credentials from AWS Secrets Manager → `TF_VAR_*`), manages per-layer backends, and provides lint/plan/apply/destroy across `01_infra`, `02_workspace`, and `03_unity_catalog`.

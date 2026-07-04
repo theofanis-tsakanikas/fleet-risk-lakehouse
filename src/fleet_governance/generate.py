@@ -128,7 +128,10 @@ def render_processing_record() -> str:
         "- **Purpose:** real-time driver safety risk monitoring for a logistics fleet.",
         "- **Controller / DPO:** _(fill in for the deploying organisation)_.",
         "- **Categories of data subjects:** fleet drivers.",
-        "- **Recipients:** fleet operations managers (via the Grafana safety dashboards).",
+        "- **Recipients:** fleet operations managers — via the Grafana safety dashboards and push "
+        "notifications to Slack / PagerDuty. External notifications carry only operational and derived "
+        "fields (driver/truck id, speed, risk score, alert type); **special-category biometrics are never "
+        "sent to an external service** (see ADR-009).",
         "- **International transfers:** none by default (single-region lakehouse).",
         "",
         "## Special-category data (GDPR Art. 9)",

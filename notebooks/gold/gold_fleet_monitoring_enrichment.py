@@ -64,6 +64,7 @@ from fleet_governance.masking import (  # noqa: E402
     drop_mask_ddls,
     mask_function_ddls,
 )
+from fleet_alerting.dispatch import AlertingConfig, dispatch_alerts  # noqa: E402
 
 # --- HYBRID CONFIGURATION (Local .env support) ---
 try:
@@ -368,6 +369,48 @@ if report.is_alerting:
     )
 else:
     logger.info(f"Risk-score distribution stable (PSI={report.psi}).")
+
+# COMMAND ----------
+# MAGIC %md
+# MAGIC ### 4b. Push Safety Alerts (Slack + PagerDuty)
+# MAGIC CRITICAL/DANGER (and, per config, WARNING/OVERSPEED) alerts are pushed **from the
+# MAGIC pipeline** — event-driven, at the end of the run — to Slack (team awareness) and
+# MAGIC PagerDuty (on-call escalation). Grafana stays the dashboard; this is the push path
+# MAGIC (see ADR-009). Only operational/derived fields leave the platform: the outgoing message
+# MAGIC is built from an allowlist, so **special-category biometrics are never sent to an
+# MAGIC external service**. Delivery is best-effort — a webhook failure is recorded as a
+# MAGIC metric and logged, but never fails the run (the Gold data write already succeeded).
+
+# COMMAND ----------
+alerting = AlertingConfig.from_getter(get_param_or)
+# Read ONLY the allowlisted (non-biometric) columns straight from the source query.
+alert_cols = "timestamp, driver_id, truck_id, speed, risk_score, risk_primary_factor, alert_type"
+alert_rows = [
+    r.asDict()
+    for r in spark.sql(
+        f"SELECT {alert_cols} FROM {safety_alerts_table} WHERE alert_type <> 'NORMAL' ORDER BY timestamp DESC"
+    ).collect()
+]
+try:
+    alert_report = dispatch_alerts(alert_rows, alerting, run_id=run_id)
+    measures["alerts_notifiable"] = alert_report.considered
+    measures["alerts_slack_sent"] = alert_report.slack_sent
+    measures["alerts_pagerduty_sent"] = alert_report.pagerduty_sent
+    measures["alerts_dispatch_errors"] = alert_report.errors
+    if alerting.slack_enabled or alerting.pagerduty_enabled:
+        logger.info(
+            f"Alerting: {alert_report.considered} notifiable → "
+            f"Slack {alert_report.slack_sent}, PagerDuty {alert_report.pagerduty_sent}, "
+            f"errors {alert_report.errors}."
+        )
+    else:
+        logger.info(
+            f"Alerting not configured (no webhook / routing key) — "
+            f"{alert_report.considered} alert(s) would have been notified."
+        )
+except Exception as exc:  # alerting must never break the Gold run
+    logger.warning(f"Alert dispatch raised (non-fatal): {exc}")
+    measures["alerts_dispatch_errors"] = measures.get("alerts_dispatch_errors", 0) + 1
 
 # COMMAND ----------
 # MAGIC %md
