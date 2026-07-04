@@ -61,8 +61,11 @@ resource "databricks_catalog" "this" {
   name     = each.key
   comment  = each.value.comment
 
-  # Dynamically appends the catalog name to the External Location URL
-  storage_root = databricks_external_location.this[each.value.external_location_key].url
+  # Databricks normalises an external location URL by stripping the trailing slash, so the
+  # `.url` attribute changes between plan (`…/unity-catalog/`) and apply (`…/unity-catalog`),
+  # which the provider rejects as an "inconsistent final plan". trimsuffix keeps both sides
+  # equal (and preserves the implicit dependency on the external location).
+  storage_root = trimsuffix(databricks_external_location.this[each.value.external_location_key].url, "/")
 }
 
 # --- 4. DYNAMIC CATALOG GRANTS ---
@@ -183,7 +186,9 @@ resource "databricks_volume" "this" {
   comment      = each.value.comment
 
   # <--- FOR EXTERNAL VOLUMES --->
-  storage_location = each.value.volume_type == "EXTERNAL" ? "${databricks_external_location.this[each.value.external_location_key].url}/${each.value.path}/" : null
+  # trimsuffix guards the same external-location URL normalisation (trailing slash) as the
+  # catalog storage_root above, so the computed path is identical at plan and apply time.
+  storage_location = each.value.volume_type == "EXTERNAL" ? "${trimsuffix(databricks_external_location.this[each.value.external_location_key].url, "/")}/${each.value.path}/" : null
   depends_on       = [databricks_schema.this]
 }
 
