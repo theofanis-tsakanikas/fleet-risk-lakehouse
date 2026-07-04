@@ -10,7 +10,7 @@ for design rationale see the [ADRs](adr/).
 
 | Property | Value |
 |---|---|
-| Pipeline jobs | `fleet_monitoring_job` (DABs, 8 tasks — mock data, manual) · `fleet_replay_job` (8 tasks — **real VED data**, see [ADR-008](adr/ADR-008-real-data-replay.md)) |
+| Pipeline jobs | `simulated_sensors_job` (DABs, 8 tasks — mock data, manual) · `real_telemetry_job` (8 tasks — **real VED data**, see [ADR-008](adr/ADR-008-real-data-replay.md)) |
 | Trigger | Monitoring: manual. Replay: 30-min periodic trigger, **PAUSED by default** (`var.replay_pause_status`) — unpause for continuous operation (micro-batch per run — see [ADR-004](adr/ADR-004-micro-batch-execution.md)) |
 | Max concurrent runs | 1 per job (checkpoint safety) |
 | Job timeout | 7200s (2h) |
@@ -26,7 +26,7 @@ generate_mock_watches  ─► bronze_watches  ─► silver_watches  ─┘
 ```
 
 `build_dim_driver` depends only on `silver_trackers` and runs in parallel with Gold. In
-`fleet_replay_job` the two generator tasks are `replay_trackers` / `replay_watches`
+`real_telemetry_job` the two generator tasks are `replay_trackers` / `replay_watches`
 (real VED trips, pseudonymised, anchored to `{{job.start_time}}`); everything downstream
 is byte-identical (YAML aliases of the same task definitions).
 

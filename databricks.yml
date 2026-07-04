@@ -109,8 +109,8 @@ targets:
 # --- RESOURCES (JOBS & WORKFLOWS) ---
 resources:
   jobs:
-    fleet_monitoring_job:
-      name: "Fleet Monitoring: Unified Medallion Pipeline"
+    simulated_sensors_job:
+      name: "Fleet Pipeline — Simulated IoT Sensors (mock data)"
 
       queue:
         enabled: true
@@ -307,8 +307,8 @@ resources:
     # A periodic trigger (PAUSED by default — flip var.replay_pause_status to
     # UNPAUSED) turns the lakehouse into a continuously refreshing system.
     # ==========================================================================
-    fleet_replay_job:
-      name: "Fleet Monitoring: Real-Data Replay Pipeline (VED)"
+    real_telemetry_job:
+      name: "Fleet Pipeline — Real Vehicle Telemetry (VED replay)"
 
       queue:
         enabled: true
@@ -350,7 +350,7 @@ resources:
               - "--volume-path"
               - "/Volumes/${var.watches_catalog}/${var.watches_bronze_schema}/${var.watches_bronze_volume}"
 
-        # The medallion DAG below is identical to fleet_monitoring_job's — the
+        # The medallion DAG below is identical to simulated_sensors_job's — the
         # bronze tasks re-declare only their upstream (replay instead of mock);
         # silver/gold/dim are YAML aliases of the exact same task definitions.
         - task_key: "bronze_trackers"

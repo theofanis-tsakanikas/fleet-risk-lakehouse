@@ -57,6 +57,7 @@ and `make check` reproduces CI locally. The Makefile defaults `PYTHON` to `.venv
 ├── .github/workflows/
 │   ├── ci.yml                        # Trigger: PR + push main — lint + fmt-check + test + govern-check gates
 │   ├── deploy-fleet-pipeline.yml     # Trigger: manual (workflow_dispatch) — full apply + DABs deploy
+│   ├── run-fleet-pipeline.yml        # Trigger: manual (workflow_dispatch) — pick a scenario (mock/real) & run it
 │   ├── terraform-plan-pr.yml         # Trigger: pull_request — plan all 3 layers, post sticky comments
 │   └── gitleaks.yml                  # Trigger: PR + push — secret scan over full git history
 ├── notebooks/
@@ -241,7 +242,7 @@ causing an authentication failure at Terraform's provider initialization — not
 ```bash
 ./bundle.sh validate   # Validate databricks.yml against the workspace (no-op check)
 ./bundle.sh deploy     # Upload notebooks/src to workspace, register the job definition
-./bundle.sh run        # Trigger fleet_monitoring_job immediately and tail output
+./bundle.sh run        # Trigger simulated_sensors_job immediately and tail output
 ```
 
 `bundle.sh` resolves `DATABRICKS_HOST` and `SPN_ID` at runtime:
@@ -257,13 +258,21 @@ generate_mock_trackers ──► bronze_trackers ──► silver_trackers ─�
 generate_mock_watches  ──► bronze_watches  ──► silver_watches  ──────► gold_fleet_enrichment
 ```
 
-- `fleet_monitoring_job` — mock generators (dirty-data injection), manual trigger.
-- `fleet_replay_job` — `replay_trackers` / `replay_watches` stream **real VED trips**
-  (see [ADR-008](docs/adr/ADR-008-real-data-replay.md)); both tasks get the same
+- `simulated_sensors_job` — mock generators (dirty-data injection); display name
+  *"Fleet Pipeline — Simulated IoT Sensors (mock data)"*, manual trigger.
+- `real_telemetry_job` — `replay_trackers` / `replay_watches` stream **real VED trips**
+  (see [ADR-008](docs/adr/ADR-008-real-data-replay.md)); display name *"Fleet Pipeline —
+  Real Vehicle Telemetry (VED replay)"*. Both tasks get the same
   `{{job.start_time.iso_datetime}}` anchor so the streams align inside the ±60s join
   window. It carries a 30-minute periodic trigger, **PAUSED by default**
   (`var.replay_pause_status: UNPAUSED` enables continuous operation). Run it manually
-  with `BUNDLE_JOB_NAME=fleet_replay_job ./bundle.sh run`.
+  with `BUNDLE_JOB_NAME=real_telemetry_job ./bundle.sh run`.
+
+> **Pick a scenario from GitHub with one click.** The **Run Fleet Pipeline**
+> workflow ([run-fleet-pipeline.yml](.github/workflows/run-fleet-pipeline.yml)) exposes a
+> `workflow_dispatch` **choice** input — *"Simulated IoT sensors (mock data)"* vs *"Real
+> vehicle telemetry (VED replay)"* — maps it to the matching bundle job, deploys the current
+> bundle, and runs it. No infrastructure re-apply (that stays in the deploy workflow).
 
 Bronze and Silver for each stream run in parallel. `gold_fleet_enrichment` waits for both
 Silver tasks; `build_dim_driver` (the SCD2 driver dimension) depends only on `silver_trackers`

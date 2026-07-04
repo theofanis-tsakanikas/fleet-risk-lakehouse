@@ -36,7 +36,7 @@ the exact same Bronze → Silver → Gold contract, from the **Vehicle Energy Da
   (> 8 km/h/s decel) trigger an exponentially-decaying heart-rate/stress response, and
   overspeed (threshold from `RISK_MODEL` — the same source of truth as the score and
   alerts) sustains elevation. Deterministic per (driver, trip, seed).
-- **One bundle, two jobs**: `fleet_replay_job` mirrors the monitoring job's medallion
+- **One bundle, two jobs**: `real_telemetry_job` mirrors the monitoring job's medallion
   DAG (YAML aliases of the same task definitions), swapping only the generator tasks.
   Both replay tasks receive `{{job.start_time.iso_datetime}}` as the anchor, so the two
   streams align tick-for-tick inside the join window by construction. A 30-minute

@@ -1,0 +1,93 @@
+name: "Run Fleet Pipeline"
+
+# --- ▶️ TRIGGER CONFIGURATION ---
+# Manual-only. Pick a data scenario from the dropdown and run it with one click. This
+# deploys the current bundle (fast — notebooks/src only, no infrastructure) and then triggers
+# the selected medallion job. Infrastructure provisioning lives in the separate
+# "Deploy Fleet Monitoring Pipeline" workflow and is intentionally NOT re-run here.
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "Which data scenario should the pipeline ingest?"
+        type: choice
+        required: true
+        default: "Simulated IoT sensors (mock data)"
+        options:
+          # Synthetic sensor stream with intentional dirty data — exercises the Silver
+          # cleansing defences (bad IDs, sentinel speeds, null heart rates, duplicates).
+          - "Simulated IoT sensors (mock data)"
+          # Real vehicle telemetry (Vehicle Energy Dataset) replayed through the identical
+          # Bronze/Silver/Gold contract; biometrics conditioned on the real driving events.
+          - "Real vehicle telemetry (VED replay)"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  id-token: write # OIDC token for aws-actions/configure-aws-credentials (reads TF outputs)
+  contents: read
+
+jobs:
+  run:
+    name: "Run the selected medallion scenario"
+    runs-on: ubuntu-latest
+    # Manual-only, like the deploy workflow — the safety control is that it never runs on its
+    # own. A required-reviewer gate on this `production` environment needs GitHub Pro+.
+    environment: production
+
+    env:
+      AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      # Admin credentials drive the bundle deploy/run; the project SPN id is fetched from
+      # Terraform outputs by bundle.sh (no project-SPN secret to maintain).
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_ADMIN_CLIENT_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_ADMIN_CLIENT_SECRET }}
+
+    steps:
+      - name: "Checkout Repository"
+        uses: actions/checkout@v4
+
+      - name: "Resolve scenario → bundle job"
+        id: pick
+        run: |
+          # Map the human-readable choice to the DABs job resource key. Match on a keyword so
+          # the label can be reworded without breaking the mapping.
+          if echo "${{ inputs.scenario }}" | grep -qiE 'real|ved|replay'; then
+            JOB="real_telemetry_job"
+          else
+            JOB="simulated_sensors_job"
+          fi
+          echo "job=$JOB" >> "$GITHUB_OUTPUT"
+          echo "Scenario '${{ inputs.scenario }}' → bundle job '$JOB'"
+
+      - name: "Configure AWS Credentials (OIDC — no long-lived keys)"
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_DEFAULT_REGION }}
+
+      - name: "Read Pinned Terraform Version"
+        id: tfver
+        run: echo "version=$(cat .terraform-version)" >> "$GITHUB_OUTPUT"
+
+      - name: "Setup Terraform Engine (pinned — for reading host/SPN outputs)"
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ steps.tfver.outputs.version }}
+          terraform_wrapper: false
+
+      - name: "Setup Databricks CLI"
+        # Pinned to the v1.5.0 commit SHA (mutable @main is a supply-chain risk in a
+        # credential-holding workflow) — same pin as the deploy workflow.
+        uses: databricks/setup-cli@f01853f8d6b12678ab0fab76ffad726c460be1a5 # v1.5.0
+
+      - name: "Deploy current bundle + run the selected scenario"
+        env:
+          BUNDLE_JOB_NAME: ${{ steps.pick.outputs.job }}
+        run: |
+          chmod +x bundle.sh terraform.sh
+          # Ensure the workspace has the latest notebooks/src, then trigger the chosen job.
+          # bundle.sh resolves DATABRICKS_HOST / SPN_ID from Terraform outputs automatically.
+          ./bundle.sh deploy
+          ./bundle.sh run

@@ -18,7 +18,7 @@ OUT_SPN_APP_ID="spn_application_id"
 # otherwise a `prod` deploy would silently miss the spn_id override.
 BUNDLE_TARGET="${BUNDLE_TARGET:-dev}"
 BUNDLE_OVERRIDE_PATH=".databricks/bundle/$BUNDLE_TARGET"
-BUNDLE_JOB_NAME="${BUNDLE_JOB_NAME:-fleet_monitoring_job}"
+BUNDLE_JOB_NAME="${BUNDLE_JOB_NAME:-simulated_sensors_job}"
 
 # --- 1. Smart Configuration Discovery ---
 # Fetch DATABRICKS_HOST if not already provided by the environment (e.g. CI/CD)

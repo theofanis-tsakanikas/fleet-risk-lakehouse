@@ -82,7 +82,7 @@ The platform implements a robust **Medallion Architecture**, providing full data
 ## 📂 Project Blueprint
 ```text
 fleet-risk-lakehouse/
-├── .github/workflows/         # CI (tests/lint), PR Terraform plan, manual deploy, gitleaks
+├── .github/workflows/         # CI (tests/lint), PR Terraform plan, manual deploy, run-scenario, gitleaks
 ├── notebooks/
 │   ├── bronze/                # Ingestion: Auto Loader (cloudFiles) → Delta
 │   ├── silver/                # Quality: cleansing, dedup, sentinel handling
@@ -118,7 +118,7 @@ fleet-risk-lakehouse/
 **Visualizing the End-to-End Orchestration of the Data Pipeline**
 
 > 🎥 **[ TO RE-RECORD ]** — *Databricks Job DAG (8 tasks)*
-> Capture the `fleet_monitoring_job` graph showing the 8 tasks and their dependencies:
+> Capture the `simulated_sensors_job` graph showing the 8 tasks and their dependencies:
 > `generate_mock_{trackers,watches}` → `bronze_*` → `silver_*` → `gold_fleet_enrichment`, with
 > `build_dim_driver` branching off `silver_trackers` in parallel with Gold.
 
@@ -126,7 +126,7 @@ fleet-risk-lakehouse/
 
 **0. Data Sources (Simulation *and* the Real World)**
 * **Mock engine:** Python producers with **intentional error injection** (null heart rates, sentinel speeds, malformed IDs, ~20% duplicates) to exercise the Silver rules.
-* **Real-data replay:** `fleet_replay_job` streams genuine VED trips (real GPS, speeds, hard-braking events) through the identical contract; biometrics are simulated *conditioned on those real events* ([ADR-008](./docs/adr/ADR-008-real-data-replay.md)). Mock proves the defences; real data proves the pipeline.
+* **Real-data replay:** `real_telemetry_job` streams genuine VED trips (real GPS, speeds, hard-braking events) through the identical contract; biometrics are simulated *conditioned on those real events* ([ADR-008](./docs/adr/ADR-008-real-data-replay.md)). Mock proves the defences; real data proves the pipeline.
 * **Landing Zone:** AWS S3 landing zone & Unity Catalog Volumes (hybrid strategy).
 
 > 🎥 **[ TO RE-RECORD ]** — *Landing zone (S3 / UC Volume)*
@@ -245,8 +245,13 @@ make infra-up
 ```bash
 make deploy       # ./bundle.sh deploy  — upload notebooks/src + register both jobs
 make run          # ./bundle.sh run     — trigger the 8-task mock Medallion job
-BUNDLE_JOB_NAME=fleet_replay_job make run   # trigger the real-data replay job
+BUNDLE_JOB_NAME=real_telemetry_job make run   # trigger the real-data replay job
 ```
+
+> 🖱️ **Or run it from GitHub with one click:** the **Run Fleet Pipeline** workflow
+> (`workflow_dispatch`) offers a dropdown to pick the data scenario — *Simulated IoT sensors
+> (mock data)* or *Real vehicle telemetry (VED replay)* — deploys the current bundle, and runs
+> the matching job. Infrastructure provisioning stays in the separate manual deploy workflow.
 
 **4. Automated Resource Teardown** (reverse order)
 ```bash
