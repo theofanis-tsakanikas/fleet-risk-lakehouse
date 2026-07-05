@@ -10,7 +10,7 @@
 # ==============================================================================
 
 # === ☁️ Cloud & Databricks SDKs ===
-databricks-sdk==0.119.0
+databricks-sdk==0.120.0
 awscli==1.45.39
 
 # === 🛠️ Code Quality & Git hooks ===
