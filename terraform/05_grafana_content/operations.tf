@@ -79,6 +79,27 @@ locals {
   psi_thresholds = { mode = "absolute", steps = [
     { color = "green", value = null }, { color = "yellow", value = 0.1 }, { color = "red", value = 0.25 }
   ] }
+
+  # Per-slice colours so the pies read by SEVERITY, not the default palette (a green "alert" slice
+  # reads as "healthy", which is wrong). Matched by the exact alert_type string.
+  alert_color_overrides = [
+    for pair in [
+      ["DANGER: Extreme Heart Rate", "red"],
+      ["CRITICAL: High Speed & Stress", "dark-red"],
+      ["OVERSPEED", "orange"],
+      ["WARNING: Elevated Heart Rate", "yellow"],
+      ] : {
+      matcher    = { id = "byName", options = pair[0] }
+      properties = [{ id = "color", value = { mode = "fixed", fixedColor = pair[1] } }]
+    }
+  ]
+  # Risk factors coloured to their gauge/marker meaning; no green (avoids "good" connotation).
+  factor_color_overrides = [
+    for pair in [["speed", "blue"], ["stress", "orange"], ["heart_rate", "red"]] : {
+      matcher    = { id = "byName", options = pair[0] }
+      properties = [{ id = "color", value = { mode = "fixed", fixedColor = pair[1] } }]
+    }
+  ]
 }
 
 resource "grafana_dashboard" "fleet_operations" {
@@ -109,7 +130,7 @@ resource "grafana_dashboard" "fleet_operations" {
         options     = local.gauge_options
       },
       {
-        id          = 3, title = "Active safety alerts", type = "stat", datasource = local.ds_ref
+        id          = 3, title = "Safety alerts (this run)", type = "stat", datasource = local.ds_ref
         gridPos     = { x = 12, y = 0, w = 6, h = 5 }, targets = [local.ops_target["kpi_active_alerts"]]
         fieldConfig = { defaults = { unit = "short", decimals = 0, color = { mode = "fixed", fixedColor = "orange" } }, overrides = [] }
         options     = { reduceOptions = { calcs = ["lastNotNull"] }, colorMode = "value", graphMode = "none" }
@@ -162,13 +183,13 @@ resource "grafana_dashboard" "fleet_operations" {
       {
         id          = 7, title = "Alerts by type", type = "piechart", datasource = local.ds_ref
         gridPos     = { x = 0, y = 17, w = 12, h = 8 }, targets = [local.ops_target["alerts_by_type"]]
-        fieldConfig = { defaults = { unit = "short", decimals = 0 }, overrides = [] }
+        fieldConfig = { defaults = { unit = "short", decimals = 0, color = { mode = "palette-classic" } }, overrides = local.alert_color_overrides }
         options     = { reduceOptions = { values = true }, pieType = "donut", displayLabels = ["name", "value"], legend = { displayMode = "list", placement = "right" } }
       },
       {
         id          = 8, title = "Risk primary factor (per driver)", type = "piechart", datasource = local.ds_ref
         gridPos     = { x = 12, y = 17, w = 12, h = 8 }, targets = [local.ops_target["primary_factor"]]
-        fieldConfig = { defaults = { unit = "short", decimals = 0 }, overrides = [] }
+        fieldConfig = { defaults = { unit = "short", decimals = 0, color = { mode = "palette-classic" } }, overrides = local.factor_color_overrides }
         options     = { reduceOptions = { values = true }, pieType = "pie", displayLabels = ["name", "value"], legend = { displayMode = "list", placement = "right" } }
       },
     ]
