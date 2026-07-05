@@ -69,6 +69,16 @@ locals {
 
   # Shared gauge display options (radial arc with coloured threshold markers).
   gauge_options = { reduceOptions = { calcs = ["lastNotNull"] }, showThresholdLabels = false, showThresholdMarkers = true, orientation = "auto" }
+
+  # Quarantined rows: 0 is healthy (green); any quarantined row turns it red.
+  quarantine_thresholds = { mode = "absolute", steps = [
+    { color = "green", value = null }, { color = "red", value = 1 }
+  ] }
+
+  # PSI drift (industry convention): stable < 0.1 (green), moderate 0.1-0.25 (yellow), significant >= 0.25 (red).
+  psi_thresholds = { mode = "absolute", steps = [
+    { color = "green", value = null }, { color = "yellow", value = 0.1 }, { color = "red", value = 0.25 }
+  ] }
 }
 
 resource "grafana_dashboard" "fleet_operations" {
@@ -81,7 +91,7 @@ resource "grafana_dashboard" "fleet_operations" {
     schemaVersion = 39
     version       = 1
     refresh       = "5m"
-    time          = { from = "now-30d", to = "now" }
+    time          = { from = "now-6h", to = "now" }
     templating    = { list = [] }
     annotations   = { list = [] }
     panels = [

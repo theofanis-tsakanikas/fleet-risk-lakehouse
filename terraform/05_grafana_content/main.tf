@@ -57,7 +57,7 @@ locals {
       columns = local.cols_value
     },
     {
-      title   = "Live status rows (latest)"
+      title   = "Drivers monitored (latest)"
       ptype   = "stat", unit = "short", decimals = 0
       x       = 6, y = 0, w = 6, h = 4
       sql     = "SELECT value FROM ${local.metrics_table} WHERE metric = 'live_status_rows' ORDER BY captured_at DESC LIMIT 1"
@@ -66,6 +66,7 @@ locals {
     {
       title   = "Quarantined rows (latest)"
       ptype   = "stat", unit = "short", decimals = 0
+      thr     = local.quarantine_thresholds # 0 = green (healthy), >=1 = red
       x       = 12, y = 0, w = 6, h = 4
       sql     = "SELECT value FROM ${local.metrics_table} WHERE metric = 'live_quarantined_rows' ORDER BY captured_at DESC LIMIT 1"
       columns = local.cols_value
@@ -73,6 +74,7 @@ locals {
     {
       title   = "Risk-score PSI / drift (latest)"
       ptype   = "stat", unit = "short", decimals = 2
+      thr     = local.psi_thresholds # <0.1 green, 0.1-0.25 yellow, >=0.25 red
       x       = 18, y = 0, w = 6, h = 4
       sql     = "SELECT value FROM ${local.metrics_table} WHERE metric = 'risk_score_psi' ORDER BY captured_at DESC LIMIT 1"
       columns = local.cols_value
@@ -86,7 +88,7 @@ locals {
     },
     {
       title   = "Sensor null rates (latest run)"
-      ptype   = "bargauge", unit = "percentunit", decimals = 3
+      ptype   = "bargauge", unit = "percentunit", decimals = 1
       x       = 12, y = 4, w = 12, h = 9
       sql     = "SELECT metric, value FROM ${local.metrics_table} WHERE metric LIKE '%null_rate%' AND ${local.latest_run} ORDER BY metric"
       columns = local.cols_metric_value
@@ -101,16 +103,19 @@ locals {
     {
       title   = "Risk-score PSI / drift over runs"
       ptype   = "timeseries", unit = "short", decimals = 2
+      thr     = local.psi_thresholds
       x       = 12, y = 13, w = 12, h = 8
       sql     = "SELECT CAST(captured_at AS STRING), metric, value FROM ${local.metrics_table} WHERE metric = 'risk_score_psi' ORDER BY captured_at"
       columns = local.cols_time_series
     },
     {
-      title   = "All pipeline metrics (latest run)"
+      # Raw reference of every metric for the latest run. The `stage` column is dropped: today all
+      # metrics are emitted from the Gold notebook, so it read a redundant "gold" on every row.
+      title   = "Pipeline metrics (latest run)"
       ptype   = "table", unit = "short", decimals = 2
       x       = 0, y = 21, w = 24, h = 9
-      sql     = "SELECT stage, metric, value FROM ${local.metrics_table} WHERE ${local.latest_run} ORDER BY metric"
-      columns = local.cols_stage_metric
+      sql     = "SELECT metric, value FROM ${local.metrics_table} WHERE ${local.latest_run} ORDER BY metric"
+      columns = local.cols_metric_value
     },
   ]
 
@@ -123,11 +128,16 @@ locals {
     # jsondecode(jsonencode(...)) keeps the ternary branches the same (string) type — the objects
     # differ in shape per panel type, which a bare ?: rejects.
     fieldConfig = {
-      # Draw points always so a single run (one data point) is still visible on the line; gauges
-      # carry min/max + threshold colouring. try() lets those keys exist only on the gauge spec.
+      # Draw points so a single run is visible on the line; gauges carry min/max; stat / timeseries
+      # colour by thresholds when the spec declares `thr`. can()/try() let those keys exist per-spec.
       defaults = jsondecode(
-        p.ptype == "timeseries" ? jsonencode({ unit = p.unit, decimals = p.decimals, custom = { drawStyle = "line", showPoints = "always", lineWidth = 2, pointSize = 7, spanNulls = true } }) :
+        p.ptype == "timeseries" ? (can(p.thr)
+          ? jsonencode({ unit = p.unit, decimals = p.decimals, custom = { drawStyle = "line", showPoints = "always", lineWidth = 2, pointSize = 7, spanNulls = true }, color = { mode = "thresholds" }, thresholds = p.thr })
+        : jsonencode({ unit = p.unit, decimals = p.decimals, custom = { drawStyle = "line", showPoints = "always", lineWidth = 2, pointSize = 7, spanNulls = true } })) :
         p.ptype == "gauge" ? jsonencode({ unit = p.unit, decimals = p.decimals, min = try(p.gmin, 0), max = try(p.gmax, 100), color = { mode = "thresholds" }, thresholds = try(p.thr, local.risk_thresholds) }) :
+        p.ptype == "stat" ? (can(p.thr)
+          ? jsonencode({ unit = p.unit, decimals = p.decimals, color = { mode = "thresholds" }, thresholds = p.thr })
+        : jsonencode({ unit = p.unit, decimals = p.decimals })) :
         jsonencode({ unit = p.unit, decimals = p.decimals })
       )
       overrides = []
@@ -178,10 +188,12 @@ resource "grafana_dashboard" "pipeline_observability" {
     schemaVersion = 39
     version       = 1
     refresh       = "5m"
-    time          = { from = "now-30d", to = "now" }
-    templating    = { list = [] }
-    annotations   = { list = [] }
-    panels        = local.panels
+    # Tight default window so the per-run trends read as recent activity, not lost across a month.
+    # Widen it anytime from the top-right time picker — no redeploy needed.
+    time        = { from = "now-6h", to = "now" }
+    templating  = { list = [] }
+    annotations = { list = [] }
+    panels      = local.panels
   })
 
   overwrite = true
