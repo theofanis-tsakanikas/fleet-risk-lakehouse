@@ -242,6 +242,52 @@ def test_send_pagerduty_never_raises():
     assert send_pagerduty("RK", ev, transport=boom) is False
 
 
+def test_send_pagerduty_serialises_spark_native_types(monkeypatch):
+    """Regression: PagerDuty custom_details carry the alert's risk_score (Decimal) and timestamp
+    (datetime) from collect(); vanilla json.dumps rejected them, silently failing every send. The
+    real POST path (default transport) must serialise and deliver without raising."""
+    import datetime as dt
+    import decimal
+    import json as _json
+    import urllib.request
+
+    captured = {}
+
+    class _Resp:
+        status = 202
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def getcode(self):
+            return 202
+
+    def _fake_urlopen(req, timeout=None):
+        captured["data"] = req.data
+        return _Resp()
+
+    monkeypatch.setattr(urllib.request, "urlopen", _fake_urlopen)
+
+    alert = {
+        "driver_id": "DRV_07",
+        "truck_id": "TRK-707",
+        "alert_type": "DANGER: Extreme Heart Rate",
+        "severity": "critical",
+        "speed": 95,
+        "risk_score": decimal.Decimal("78.53"),  # Spark DECIMAL
+        "timestamp": dt.datetime(2026, 7, 5, 7, 50),  # Spark TIMESTAMP
+        "risk_primary_factor": "heart_rate",
+    }
+    ev = pagerduty_event(alert, "RK")
+    # Default transport -> _http_post_json -> json.dumps(default=str); must not raise -> True.
+    assert send_pagerduty("RK", ev) is True
+    body = _json.loads(captured["data"])
+    assert body["payload"]["custom_details"]["risk_score"] == "78.53"  # coerced to string
+
+
 # --- orchestration ------------------------------------------------------------------------- #
 
 

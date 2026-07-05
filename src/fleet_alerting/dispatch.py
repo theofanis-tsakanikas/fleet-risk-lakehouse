@@ -79,8 +79,15 @@ class DispatchReport:
 
 
 def _http_post_json(url: str, body: dict) -> int:
-    """POST ``body`` as JSON; return the HTTP status code."""
-    data = json.dumps(body).encode("utf-8")
+    """POST ``body`` as JSON; return the HTTP status code.
+
+    ``default=str`` so Spark-native values that reach a payload serialise instead of raising:
+    PagerDuty's ``custom_details`` carries the alert's ``risk_score`` (a ``Decimal``) and
+    ``timestamp`` (a ``datetime``) from ``collect()``, which vanilla ``json.dumps`` rejects — that
+    silently failed every PagerDuty send (Slack only ever sends pre-formatted strings, so it was
+    unaffected). Coercing to ``str`` is safe: PagerDuty renders ``custom_details`` values as text.
+    """
+    data = json.dumps(body, default=str).encode("utf-8")
     req = urllib.request.Request(url, data=data, method="POST")
     req.add_header("Content-Type", "application/json")
     with urllib.request.urlopen(req, timeout=_TIMEOUT_S) as resp:  # noqa: S310 — fixed https endpoints
