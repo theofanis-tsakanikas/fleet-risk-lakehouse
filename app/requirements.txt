@@ -8,4 +8,4 @@ plotly>=5.20
 pydeck>=0.9
 
 # Optional — only needed for "Databricks SQL (live)" mode:
-databricks-sql-connector>=3.0
+databricks-sql-connector>=4.3.0
