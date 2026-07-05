@@ -148,6 +148,15 @@ def test_watch_outlier_heart_rate_injection(seq):
     assert generators.generate_watch_event(DRIVER, TS)["metrics"]["heart_rate"] == 250
 
 
+def test_watch_incident_heart_rate_injection(seq):
+    # 0.12<=error_roll<0.22 -> a genuine extreme heart rate (>110) that survives Silver and
+    # trips DANGER: Extreme Heart Rate. seq: id_roll, error_roll, randint, ...stress rolls.
+    seq([0.5, 0.15, 0.5])
+    hr = generators.generate_watch_event(DRIVER, TS)["metrics"]["heart_rate"]
+    assert 111 <= hr <= 155
+    assert hr > 110  # above the DANGER threshold (RISK_MODEL.heart_rate_danger)
+
+
 def test_watch_stress_score_dropped(seq):
     seq([0.5, 0.5, 0.9])  # final roll >= 0.80 -> no stress_score
     assert "stress_score" not in generators.generate_watch_event(DRIVER, TS)["metrics"]
@@ -212,6 +221,7 @@ def test_tracker_anomaly_rates(predicate, expected):
         (lambda e: e["metrics"]["heart_rate"] == -999, 0.03),
         (lambda e: e["metrics"]["heart_rate"] == 0, 0.02),
         (lambda e: e["metrics"]["heart_rate"] == 250, 0.02),
+        (lambda e: 111 <= (e["metrics"]["heart_rate"] or 0) <= 155, 0.10),  # genuine DANGER incidents (excl. the 250 sentinel)
         (lambda e: "stress_score" not in e["metrics"], 0.20),
     ],
 )

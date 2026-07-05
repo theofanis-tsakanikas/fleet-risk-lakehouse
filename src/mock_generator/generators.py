@@ -121,7 +121,11 @@ def generate_watch_event(driver_info: dict, synced_time: datetime) -> dict:
     elif id_roll < 0.10:
         watch_id = ""
 
-    # Scenario: Normal or Dirty Data
+    # Scenario: Normal, Dirty, or a genuine safety incident.
+    # ~10% of readings are a real extreme-stress event: an elevated but physiologically plausible
+    # heart rate (111-155 bpm) that SURVIVES Silver cleansing (the >220 outlier filter) and trips
+    # the DANGER / CRITICAL alert path -> PagerDuty escalation. Without it, valid heart rates cap at
+    # 95 bpm, so `DANGER: Extreme Heart Rate` (heart_rate > 110) could never fire on real data.
     error_roll = random.random()
     if error_roll < 0.05:
         heart_rate = None
@@ -131,6 +135,8 @@ def generate_watch_event(driver_info: dict, synced_time: datetime) -> dict:
         heart_rate = 0
     elif error_roll < 0.12:
         heart_rate = 250
+    elif error_roll < 0.22:
+        heart_rate = random.randint(111, 155)
     else:
         heart_rate = random.randint(65, 95)
 
