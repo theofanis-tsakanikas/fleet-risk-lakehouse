@@ -84,7 +84,7 @@ jobs:
       - name: "Setup Databricks CLI"
         # Pinned to the v1.5.0 commit SHA (mutable @main is a supply-chain risk in a
         # credential-holding workflow) — same pin as the deploy workflow.
-        uses: databricks/setup-cli@f01853f8d6b12678ab0fab76ffad726c460be1a5 # v1.5.0
+        uses: databricks/setup-cli@71b5fa6b2b94c9a543658f65ebb6b477913f8626 # v1.6.0
 
       - name: "Deploy current bundle + run the selected scenario"
         env:
