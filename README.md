@@ -57,7 +57,7 @@ Production-grade data and platform engineering, end to end:
 * **Pipeline self-observability & drift** — an append-only `pipeline_metrics` fact (row counts, join match rate, quarantine count, risk-score PSI, band distribution) + risk-score distribution **drift** detection (a WARN signal).
 * **Push alerting (Slack + PagerDuty)** — CRITICAL/DANGER alerts are pushed **from the pipeline** (not by Grafana polling), severity-routed and deduplicated. Only operational/derived fields are sent — **special-category biometrics never leave the platform**. See [ADR-009](./docs/adr/ADR-009-alert-notifications.md).
 * **Dashboards as code** — Amazon Managed Grafana, its datasource + dashboards provisioned **100% in Terraform** over the free OSS Infinity datasource (no Enterprise plugin), plus a Streamlit "Fleet Safety Command Center". See [ADR-010](./docs/adr/ADR-010-grafana-infinity-datasource.md).
-* **CI/CD automation** — sticky Terraform `plan` comments on PRs; a manual (`workflow_dispatch`) full-`apply` deploy; keyless AWS auth via GitHub **OIDC**; gitleaks secret scanning; and a local test suite (**164 tests**) gating every push.
+* **CI/CD automation** — sticky Terraform `plan` comments on PRs; a manual (`workflow_dispatch`) full-`apply` deploy; keyless AWS auth via GitHub **OIDC**; gitleaks secret scanning; and a local test suite (**165 tests**) gating every push.
 * **One discoverable interface** — a [`Makefile`](./Makefile) front door (`make help`) wraps the shell scripts and bundles the exact CI gates (`make check`).
 
 ---
@@ -132,7 +132,7 @@ fleet-risk-lakehouse/
 │   ├── governance/            # Generated risk model card + GDPR Art. 30 processing record
 │   └── architecture.md · RUNBOOK.md · SCALING.md · TESTING.md
 ├── terraform/                 # 01_infra · 02_workspace · 03_unity_catalog · 04_grafana · 05_grafana_content · modules/
-├── tests/                     # 164 tests (pure-Python + local PySpark)
+├── tests/                     # 165 tests (pure-Python + local PySpark)
 ├── databricks.yml             # DABs bundle: 2 jobs (mock + real-data replay), variables, targets
 ├── Makefile                   # Front door: `make help`
 └── terraform.sh / bundle.sh / setup.sh   # Layer orchestrator / DABs bridge / local bootstrap
@@ -201,6 +201,15 @@ Nothing in the data changes — only the principal does. That is GDPR Art. 9 gov
 ---
 
 ## 📊 Dashboards & Alerting
+
+### Streamlit — the live command center
+A self-contained **"Fleet Safety Command Center"** reads the Gold layer directly over the serverless SQL Warehouse — or falls back to a bundled offline demo dataset when no workspace is configured (one toggle in the sidebar, no code change). Connected, the header badge flips to **● LIVE · DATABRICKS SQL**, and the KPIs, a risk-coloured fleet map, and a per-driver leaderboard all update from the real `fleet_dev.operations` Gold tables:
+
+![Streamlit — Fleet Safety Command Center, live on Databricks SQL](./images/new/streamlit/fleet_live.png)
+
+The **Driver Drill-down** makes the core thesis visible — telemetry and biometrics overlaid on a single ±60-second timeline. Speed, heart rate, and the resulting risk score move together; either signal alone would miss the moment the correlation catches:
+
+![Streamlit — driver drill-down: speed × heart rate × risk on one timeline](./images/new/streamlit/driver_drill_down.png)
 
 ### Grafana — dashboards as code
 Amazon Managed Grafana, with its datasource + dashboards provisioned **entirely in Terraform** ([ADR-010](./docs/adr/ADR-010-grafana-infinity-datasource.md)). To avoid the Enterprise Databricks plugin (+$45/user/mo on AMG), it queries through the free OSS **Infinity** datasource → the Databricks SQL Statement Execution API, authenticated with the read-only BI service principal (so it respects the column masks by construction). The **Fleet Operations** dashboard — risk gauges, a geomap of the fleet coloured by risk (coarse, masked location), a per-driver leaderboard, and severity-coloured alert/factor breakdowns:
