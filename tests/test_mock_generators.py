@@ -221,7 +221,10 @@ def test_tracker_anomaly_rates(predicate, expected):
         (lambda e: e["metrics"]["heart_rate"] == -999, 0.03),
         (lambda e: e["metrics"]["heart_rate"] == 0, 0.02),
         (lambda e: e["metrics"]["heart_rate"] == 250, 0.02),
-        (lambda e: 111 <= (e["metrics"]["heart_rate"] or 0) <= 155, 0.10),  # genuine DANGER incidents (excl. the 250 sentinel)
+        (
+            lambda e: 111 <= (e["metrics"]["heart_rate"] or 0) <= 155,
+            0.10,
+        ),  # genuine DANGER incidents (excl. the 250 sentinel)
         (lambda e: "stress_score" not in e["metrics"], 0.20),
     ],
 )
