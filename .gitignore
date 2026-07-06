@@ -83,3 +83,6 @@ notes/
 # 🎬 Promo video production (recordings, plan, assets — local only)
 # ==========================================
 promo/
+
+# Un-masked AWS console screenshots — local backup only (masked copies are committed)
+images/new/aws/*_original.png
