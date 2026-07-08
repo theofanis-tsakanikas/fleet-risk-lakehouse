@@ -2,9 +2,10 @@ name: "Destroy Infrastructure & Pipeline"
 
 # --- 💣 TRIGGER CONFIGURATION ---
 # Manual-only, irreversible. Tears down the selected layers in strict reverse dependency
-# order (03 → 02 → 01). The scope options are cumulative top-down slices, so you can never
-# destroy a lower layer while a higher one still depends on it. A typed confirmation guards
-# against an accidental click.
+# order (05 → 04 → 03 → 02 → 01). The scope options are cumulative top-down slices, so you can
+# never destroy a lower layer while a higher one still depends on it. The two Grafana layers
+# (05 content, 04 workspace) sit on top of everything — when included they are destroyed FIRST.
+# A typed confirmation guards against an accidental click.
 on:
   workflow_dispatch:
     inputs:
@@ -17,6 +18,7 @@ on:
           - "Unity Catalog only (03)"
           - "Unity Catalog + Workspace config (03 -> 02)"
           - "Everything incl. workspace + bundle (03 -> 02 -> 01)"
+          - "Everything incl. Grafana (05 -> 04 -> 03 -> 02 -> 01)"
       confirm:
         description: "Type 'destroy' to confirm — this is irreversible."
         type: string
@@ -91,8 +93,23 @@ jobs:
           # (03 is always included; 02 and 01 are added only when present).
           DO_02=false
           DO_01=false
+          DO_GRAFANA=false
           case "$SCOPE" in *02*) DO_02=true ;; esac
           case "$SCOPE" in *01*) DO_01=true ;; esac
+          case "$SCOPE" in *Grafana*) DO_GRAFANA=true ;; esac
+
+          if [ "$DO_GRAFANA" = "true" ]; then
+            # Grafana sits on top of the whole stack (04/05 read 01/02/04 remote state), so it must
+            # go first. Destroy 05 while the Grafana workspace (04) still exists — the provider
+            # authenticates with 04's service-account token.
+            echo "🔥 Destroying layer 05 (Grafana content: Infinity datasource + dashboards)..."
+            ./terraform.sh 05_grafana_content destroy
+
+            echo "🔥 Destroying layer 04 (Grafana workspace + service-account token)..."
+            # grafana_admin_user_id has no default; any value satisfies the required variable on a
+            # destroy (Terraform tears down what is in state regardless of the value).
+            TF_VAR_grafana_admin_user_id="00000000-0000-0000-0000-000000000000" ./terraform.sh 04_grafana destroy
+          fi
 
           echo "🔥 Destroying layer 03 (Unity Catalog: catalogs, schemas, volumes, external locations, credential)..."
           ./terraform.sh 03_unity_catalog destroy
