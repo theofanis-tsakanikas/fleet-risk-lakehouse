@@ -2,7 +2,7 @@
 # Kept separate from the pipeline's root requirements.txt so the demo UI has a
 # light, self-contained footprint (no Spark / Databricks Connect needed).
 
-streamlit>=1.40
+streamlit>=1.59.1
 pandas>=2.0
 plotly>=5.20
 pydeck>=0.9
