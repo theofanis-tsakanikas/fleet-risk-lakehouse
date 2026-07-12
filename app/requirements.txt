@@ -4,7 +4,7 @@
 
 streamlit>=1.40
 pandas>=2.0
-plotly>=5.20
+plotly>=6.9.0
 pydeck>=0.9
 
 # Optional — only needed for "Databricks SQL (live)" mode:
