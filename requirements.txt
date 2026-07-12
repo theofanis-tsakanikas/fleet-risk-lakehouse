@@ -14,7 +14,7 @@ databricks-sdk==0.119.0
 awscli==1.45.39
 
 # === 🛠️ Code Quality & Git hooks ===
-ruff==0.15.20
+ruff==0.15.21
 pre-commit==4.6.0
 
 # === 🔌 Databricks Remote Connection ===
