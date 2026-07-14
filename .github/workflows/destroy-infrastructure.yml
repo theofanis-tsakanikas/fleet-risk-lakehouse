@@ -127,7 +127,14 @@ jobs:
             ./bundle.sh destroy || echo "⚠️  bundle destroy skipped/failed (non-fatal) — the workspace teardown removes the jobs."
 
             echo "🔥 Destroying layer 01 (foundation: workspace, metastore, SPNs, S3, IAM, Secrets Manager)..."
-            ./terraform.sh 01_infra destroy
+            # The metastore is the one resource the API refuses to delete from CI, force_destroy or
+            # not. Everything else in layer 01 goes down before Terraform reaches it, so a failure
+            # here is almost always that — and the teardown is a documented two-pass operation. Say
+            # so, loudly, rather than leaving a bare Terraform error for the operator to decode.
+            if ! ./terraform.sh 01_infra destroy; then
+              echo "::error::Layer 01 stopped, almost certainly on the metastore — the API will not delete it from CI. The teardown is TWO-PASS: (1) delete it by hand in the Databricks Account Console (Catalog → Metastores → primary-metastore-eu-central-1 → Delete; safe now, layer 03 already emptied it), then (2) RE-RUN this workflow, which reconciles the empty metastore out of state and finishes clean. See Known Gotcha #11 in CLAUDE.md. Leftover account-level groups/metastore are exactly what make the NEXT deploy fail with 'already exists'."
+              exit 1
+            fi
           fi
 
           echo "✅ Teardown complete for scope: $SCOPE"

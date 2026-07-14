@@ -521,3 +521,24 @@ design ([ADR-005](docs/adr/ADR-005-declarative-data-quality.md)).
 Drift is a **WARN signal, not a failure**. A significant PSI (≥ 0.25) most often means a
 sensor cohort was recalibrated or a units/config change happened upstream — rule those out via
 the `dist_band_*` metrics across recent runs before concluding the fleet actually got riskier.
+
+**11. The destroy stops at the metastore — delete it by hand, then run the destroy again**
+Layer `01_infra` tears everything else down and then **fails on `databricks_metastore`**: the
+API will not delete it from CI even with `force_destroy = true`. This is expected, and the
+teardown is a **two-pass** operation:
+
+1. Run **Destroy Infrastructure & Pipeline** (scope *"Everything incl. Grafana"*). It removes
+   05 → 04 → 03 → 02 and everything in 01 **up to the metastore**, then errors there.
+2. Delete the metastore **by hand**: Databricks **Account Console → Catalog → Metastores →
+   `primary-metastore-eu-central-1` → Delete**. It is safe by now — layer 03 already removed
+   every catalog, schema, volume and external location that lived inside it.
+3. **Re-run the same destroy workflow.** It reconciles the now-empty metastore out of state and
+   completes clean.
+
+Do **not** invert this and delete the metastore first: layers 03 and 02 live *inside* it, and
+their destroy would then refresh against a metastore that no longer exists — this provider
+raises an error instead of reporting "gone", so you end up with dirty state in two more layers.
+
+> If a later apply greets you with `Group with name data_engineers already exists` or
+> `reached the limit for metastores in region eu-central-1`, the teardown stopped at step 1 and
+> the account-level leftovers are still there. Finish steps 2–3 before deploying again.
