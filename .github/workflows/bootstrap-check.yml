@@ -1,0 +1,110 @@
+name: "Bootstrap Check (read-only preflight)"
+
+# --- 🩺 PURPOSE ---
+# Terraform does NOT create the bootstrap. A handful of things must already exist before
+# `Deploy Infrastructure & Pipeline` can run, and when one of them is missing the failure
+# surfaces late and cryptically (an empty TF_VAR, a data source that finds no group, an
+# `init` that cannot reach its backend). This workflow checks them up front.
+#
+# It is strictly READ-ONLY: no terraform apply, no resources created, no cost. Run it before
+# a deploy, or after a teardown, to confirm the foundation survived.
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  id-token: write # OIDC token for aws-actions/configure-aws-credentials
+  contents: read
+
+jobs:
+  check:
+    name: "Is the bootstrap up and ready?"
+    runs-on: ubuntu-latest
+    environment: production
+
+    env:
+      AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
+      STATE_BUCKET: fleet-risk-lakehouse-tfstate-eu-central-1
+      MASK_GROUP: fleet_safety_officers
+
+    steps:
+      - name: "Configure AWS Credentials (OIDC — proves the provider + role are wired)"
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_DEFAULT_REGION }}
+
+      - name: "AWS: the Terraform state bucket must exist (terraform init needs it)"
+        run: |
+          if aws s3api head-bucket --bucket "$STATE_BUCKET" 2>/dev/null; then
+            ENC=$(aws s3api get-bucket-encryption --bucket "$STATE_BUCKET" \
+              --query 'ServerSideEncryptionConfiguration.Rules[0].ApplyServerSideEncryptionByDefault.SSEAlgorithm' \
+              --output text 2>/dev/null || echo "NONE")
+            echo "✅ state bucket: $STATE_BUCKET (encryption: $ENC)"
+          else
+            echo "::error::State bucket '$STATE_BUCKET' is missing. Create it (eu-central-1, encryption on) before deploying — terraform init cannot configure its backend without it."
+            exit 1
+          fi
+
+      - name: "Databricks: the Account-Admin SPN must authenticate"
+        id: dbx_token
+        env:
+          ACCOUNT_ID: ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          CLIENT_ID: ${{ secrets.DATABRICKS_ADMIN_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.DATABRICKS_ADMIN_CLIENT_SECRET }}
+        run: |
+          TOKEN=$(curl -sS --fail-with-body -u "$CLIENT_ID:$CLIENT_SECRET" \
+            -X POST "https://accounts.cloud.databricks.com/oidc/accounts/${ACCOUNT_ID}/v1/token" \
+            -d 'grant_type=client_credentials' -d 'scope=all-apis' \
+            | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null) || true
+
+          if [ -z "$TOKEN" ]; then
+            echo "::error::The Databricks Account-Admin SPN could not authenticate. Check DATABRICKS_ACCOUNT_ID / DATABRICKS_ADMIN_CLIENT_ID / DATABRICKS_ADMIN_CLIENT_SECRET — every Terraform layer authenticates as this identity."
+            exit 1
+          fi
+          echo "✅ account-admin SPN authenticated against the Databricks account API"
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: "Databricks: the account-level '${{ env.MASK_GROUP }}' group must exist"
+        env:
+          ACCOUNT_ID: ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          TOKEN: ${{ steps.dbx_token.outputs.token }}
+        run: |
+          # Layer 01 looks this group up with a *data source* and adds the project SPN to it, so a
+          # missing group is a hard apply failure — and it is the single most common bootstrap gap.
+          COUNT=$(curl -sS -H "Authorization: Bearer $TOKEN" \
+            --get "https://accounts.cloud.databricks.com/api/2.0/accounts/${ACCOUNT_ID}/scim/v2/Groups" \
+            --data-urlencode "filter=displayName eq \"${MASK_GROUP}\"" \
+            | python3 -c 'import sys,json; print(json.load(sys.stdin).get("totalResults",0))' 2>/dev/null || echo 0)
+
+          if [ "$COUNT" = "0" ]; then
+            echo "::error::The account-level group '${MASK_GROUP}' does not exist. Layer 01 reads it as a data source (and adds the project SPN to it), so the apply will fail. Create it in the Databricks Account Console first."
+            exit 1
+          fi
+          echo "✅ account group '${MASK_GROUP}' exists (the mask_privileged_group)"
+
+      - name: "Optional: is Grafana wired for CI?"
+        env:
+          GRAFANA_ADMIN_USER_ID: ${{ secrets.GRAFANA_ADMIN_USER_ID }}
+        run: |
+          if [ -z "$GRAFANA_ADMIN_USER_ID" ]; then
+            echo "::warning::GRAFANA_ADMIN_USER_ID is not set. The deploy will still succeed, but its Grafana job (layers 04/05) will warn and skip."
+          else
+            echo "✅ GRAFANA_ADMIN_USER_ID is set — the deploy workflow can provision Grafana (04 → 05)"
+          fi
+
+      - name: "Summary"
+        run: |
+          echo "### 🩺 Bootstrap is up and ready" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Prerequisite | Status |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| AWS OIDC provider + deploy role | ✅ assumed this role to run |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Terraform state bucket | ✅ \`$STATE_BUCKET\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Databricks Account-Admin SPN | ✅ authenticated |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Account group \`$MASK_GROUP\` | ✅ exists |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Deploy Infrastructure & Pipeline** can run." >> "$GITHUB_STEP_SUMMARY"
