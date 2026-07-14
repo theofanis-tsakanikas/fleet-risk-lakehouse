@@ -93,12 +93,13 @@ variable "admin_group_name" {
 variable "metastore_admins" {
   description = "List of user IDs (Account Console) to add to the admin group"
   type        = list(string)
-  # The metastore sets `owner = admin_group_name`, so whoever Terraform authenticates as loses
-  # its metastore privileges the instant ownership transfers to that group — and the root data
-  # access created straight after then fails with "does not have CREATE EXTERNAL LOCATION".
-  # This list is therefore not just the human admins: it MUST also carry the numeric id of the
-  # bootstrap SPN Terraform runs as. Rotate that SPN without updating this and the apply breaks.
-  default = ["70550279536732", "79066160746664", "73933173578533"]
+  # This list is not just the human admins. The metastore sets `owner = admin_group_name`, so the
+  # bootstrap SPN Terraform authenticates as loses its metastore privileges the instant ownership
+  # transfers to that group — the root data access created straight after then fails with "does
+  # not have CREATE EXTERNAL LOCATION". Its numeric id therefore has to be in here, and it has to
+  # be the *current* one: rotate the SPN and this list must follow, or the apply breaks. A dead id
+  # is just as fatal (the member cannot be read back), so replace it, never append.
+  default = ["79066160746664", "73933173578533"]
 }
 
 variable "identity_groups" {
