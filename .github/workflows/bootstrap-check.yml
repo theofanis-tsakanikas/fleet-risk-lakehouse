@@ -55,13 +55,17 @@ jobs:
           CLIENT_ID: ${{ secrets.DATABRICKS_ADMIN_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.DATABRICKS_ADMIN_CLIENT_SECRET }}
         run: |
-          TOKEN=$(curl -sS --fail-with-body -u "$CLIENT_ID:$CLIENT_SECRET" \
-            -X POST "https://accounts.cloud.databricks.com/oidc/accounts/${ACCOUNT_ID}/v1/token" \
-            -d 'grant_type=client_credentials' -d 'scope=all-apis' \
-            | python3 -c 'import sys,json; print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null) || true
+          URL="https://accounts.cloud.databricks.com/oidc/accounts/${ACCOUNT_ID}/v1/token"
+          BODY=$(curl -sS -o /tmp/tok.json -w '%{http_code}' -u "$CLIENT_ID:$CLIENT_SECRET" \
+            -X POST "$URL" -d 'grant_type=client_credentials' -d 'scope=all-apis')
+          TOKEN=$(python3 -c 'import json;print(json.load(open("/tmp/tok.json")).get("access_token",""))' 2>/dev/null || echo "")
 
           if [ -z "$TOKEN" ]; then
-            echo "::error::The Databricks Account-Admin SPN could not authenticate. Check DATABRICKS_ACCOUNT_ID / DATABRICKS_ADMIN_CLIENT_ID / DATABRICKS_ADMIN_CLIENT_SECRET — every Terraform layer authenticates as this identity."
+            # The OAuth error body carries no secret, only a machine-readable reason. Print it:
+            # "invalid_client" means the id/secret pair is wrong or the secret was revoked/expired.
+            echo "HTTP $BODY from $(echo "$URL" | sed 's|/accounts/.*/v1|/accounts/<id>/v1|')"
+            echo "Response: $(cat /tmp/tok.json)"
+            echo "::error::The Databricks Account-Admin SPN could not authenticate (HTTP $BODY). See the response above."
             exit 1
           fi
           echo "✅ account-admin SPN authenticated against the Databricks account API"
