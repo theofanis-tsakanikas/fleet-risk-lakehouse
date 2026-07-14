@@ -10,6 +10,17 @@ name: "Bootstrap Check (read-only preflight)"
 # a deploy, or after a teardown, to confirm the foundation survived.
 on:
   workflow_dispatch:
+    inputs:
+      create_missing_group:
+        description: "Create the account group if it is missing (and add the member below)."
+        type: boolean
+        required: false
+        default: false
+      group_member:
+        description: "Databricks account user to add to the group (e.g. you@example.com). Blank = create it empty."
+        type: string
+        required: false
+        default: ""
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -76,19 +87,64 @@ jobs:
         env:
           ACCOUNT_ID: ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           TOKEN: ${{ steps.dbx_token.outputs.token }}
+          CREATE: ${{ inputs.create_missing_group }}
+          MEMBER: ${{ inputs.group_member }}
         run: |
           # Layer 01 looks this group up with a *data source* and adds the project SPN to it, so a
           # missing group is a hard apply failure — and it is the single most common bootstrap gap.
-          COUNT=$(curl -sS -H "Authorization: Bearer $TOKEN" \
-            --get "https://accounts.cloud.databricks.com/api/2.0/accounts/${ACCOUNT_ID}/scim/v2/Groups" \
-            --data-urlencode "filter=displayName eq \"${MASK_GROUP}\"" \
-            | python3 -c 'import sys,json; print(json.load(sys.stdin).get("totalResults",0))' 2>/dev/null || echo 0)
+          # It is deliberately NOT a Terraform resource: destroying layer 01 would take the group
+          # (and its human members) with it, which is exactly what a privileged group must survive.
+          python3 - <<'PY'
+          import json, os, sys, urllib.parse, urllib.request
 
-          if [ "$COUNT" = "0" ]; then
-            echo "::error::The account-level group '${MASK_GROUP}' does not exist. Layer 01 reads it as a data source (and adds the project SPN to it), so the apply will fail. Create it in the Databricks Account Console first."
-            exit 1
-          fi
-          echo "✅ account group '${MASK_GROUP}' exists (the mask_privileged_group)"
+          acct, tok = os.environ["ACCOUNT_ID"], os.environ["TOKEN"]
+          group, create = os.environ["MASK_GROUP"], os.environ["CREATE"] == "true"
+          member = os.environ.get("MEMBER", "").strip()
+          base = f"https://accounts.cloud.databricks.com/api/2.0/accounts/{acct}/scim/v2"
+
+          def call(method, path, body=None):
+              req = urllib.request.Request(
+                  f"{base}{path}", method=method,
+                  data=json.dumps(body).encode() if body else None,
+                  headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/scim+json"},
+              )
+              with urllib.request.urlopen(req) as r:
+                  raw = r.read()
+                  return json.loads(raw) if raw else {}
+
+          def find_group():
+              q = urllib.parse.quote(f'displayName eq "{group}"')
+              res = call("GET", f"/Groups?filter={q}")
+              return (res.get("Resources") or [None])[0]
+
+          g = find_group()
+          if g:
+              print(f"✅ account group '{group}' exists (the mask_privileged_group)")
+          elif not create:
+              print(f"::error::The account-level group '{group}' does not exist. Layer 01 reads it as a "
+                    f"data source (and adds the project SPN to it), so the apply will fail. Re-run this "
+                    f"workflow with 'create_missing_group' ticked, or create it in the Account Console.")
+              sys.exit(1)
+          else:
+              g = call("POST", "/Groups", {"displayName": group})
+              print(f"🛠️  created account group '{group}'")
+
+          if member:
+              q = urllib.parse.quote(f'userName eq "{member}"')
+              users = call("GET", f"/Users?filter={q}").get("Resources") or []
+              if not users:
+                  print(f"::warning::User '{member}' was not found in the Databricks account — group left as is. "
+                        f"Add the member by hand in the Account Console.")
+              elif any(m.get("value") == users[0]["id"] for m in (g.get("members") or [])):
+                  print(f"✅ '{member}' is already a member of '{group}'")
+              else:
+                  call("PATCH", f"/Groups/{g['id']}", {
+                      "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+                      "Operations": [{"op": "add", "path": "members",
+                                      "value": [{"value": users[0]["id"]}]}],
+                  })
+                  print(f"🛠️  added '{member}' to '{group}' (sees unmasked biometrics)")
+          PY
 
       - name: "Optional: is Grafana wired for CI?"
         env:
