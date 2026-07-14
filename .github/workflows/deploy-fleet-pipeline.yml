@@ -7,6 +7,12 @@ name: "Deploy Infrastructure & Pipeline"
 on:
   # Manual triggering from the GitHub Actions tab
   workflow_dispatch:
+    inputs:
+      deploy_grafana:
+        description: "Also provision Grafana (layers 04 + 05)? Needs the GRAFANA_ADMIN_USER_ID secret."
+        type: boolean
+        required: false
+        default: true
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -132,7 +138,68 @@ jobs:
 
           # Ensure the bundle orchestration script is executable
           chmod +x bundle.sh
-          
+
           # Run the bundle deployment
           # This automatically handles variable-overrides.json creation
           ./bundle.sh deploy
+
+
+  # --- 📊 JOB 3: GRAFANA — WORKSPACE + DASHBOARDS AS CODE (LAYERS 04 → 05) ---
+  # Runs alongside the bundle deploy rather than before it: Grafana only *serves* the Gold
+  # layer, so a Grafana failure (an AMG quota, a missing secret) must never block the pipeline
+  # from shipping. Layers 04/05 need neither the Databricks provider nor the project SPN —
+  # 04 is pure AWS, and 05 authenticates its grafana provider with the service-account token
+  # it reads from 04's remote state. Hence the strict 04 → 05 order.
+  deploy_grafana:
+    name: "3. Grafana (workspace + dashboards as code)"
+    needs: infrastructure
+    if: ${{ inputs.deploy_grafana }}
+    runs-on: ubuntu-latest
+    environment: production
+
+    env:
+      AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
+      # The IAM Identity Center user granted Grafana ADMIN. Layer 04 declares it with no
+      # default, so it must be supplied — see the guard in the apply step below.
+      TF_VAR_grafana_admin_user_id: ${{ secrets.GRAFANA_ADMIN_USER_ID }}
+
+    steps:
+      - name: "Checkout Repository"
+        uses: actions/checkout@v4
+
+      - name: "Configure AWS Credentials (OIDC — no long-lived keys)"
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_DEFAULT_REGION }}
+
+      - name: "Read Pinned Terraform Version"
+        id: tfver
+        run: echo "version=$(cat .terraform-version)" >> "$GITHUB_OUTPUT"
+
+      - name: "Setup Terraform Engine (pinned)"
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ steps.tfver.outputs.version }}
+          terraform_wrapper: false
+
+      - name: "Apply the Grafana layers (04 → 05)"
+        working-directory: .
+        run: |
+          # Grafana stays feature-gated, exactly like Slack/PagerDuty: with no secret it is a
+          # no-op, not a failure. The core platform and the pipeline are already deployed.
+          if [ -z "${TF_VAR_grafana_admin_user_id}" ]; then
+            echo "::warning::GRAFANA_ADMIN_USER_ID is not set — skipping the Grafana layers (04/05). Add the secret (your IAM Identity Center user id) to provision Grafana from CI, or re-run with 'deploy_grafana' unchecked to silence this."
+            exit 0
+          fi
+
+          chmod +x terraform.sh
+
+          echo "🚀 Layer 04 — Amazon Managed Grafana workspace + ADMIN service-account token + Infinity plugin..."
+          ./terraform.sh 04_grafana apply
+
+          echo "🚀 Layer 05 — Infinity datasource (over the SQL Warehouse) + the dashboards, as code..."
+          ./terraform.sh 05_grafana_content apply
+
+          echo "✅ Grafana provisioned. Endpoint:"
+          terraform -chdir=terraform/04_grafana output -raw grafana_endpoint_host 2>/dev/null || true

@@ -56,6 +56,8 @@ These must exist **before** the Quick Start — Terraform does not bootstrap the
     `DATABRICKS_ADMIN_CLIENT_ID`, `DATABRICKS_ADMIN_CLIENT_SECRET`. (`DATABRICKS_HOST` is **not**
     stored — the workflows derive the workspace URL from the `01_infra` Terraform output and pass
     it between jobs, so there is no host to copy-paste after an apply.)
+    Optional: `GRAFANA_ADMIN_USER_ID` (your IAM Identity Center user id) — required only to let
+    the deploy workflow provision the Grafana layers; without it that job warns and skips.
   - Variables: `AWS_DEFAULT_REGION` (e.g. `eu-central-1`).
 
 **Optional (feature-gated — a no-op if omitted)**
@@ -100,7 +102,7 @@ and `make check` reproduces CI locally. The Makefile defaults `PYTHON` to `.venv
 .
 ├── .github/workflows/
 │   ├── ci.yml                        # Trigger: PR + push main — lint + fmt-check + test + govern-check gates
-│   ├── deploy-fleet-pipeline.yml     # Trigger: manual (workflow_dispatch) — full apply + DABs deploy
+│   ├── deploy-fleet-pipeline.yml     # Trigger: manual (workflow_dispatch) — apply 01→03, DABs deploy, + Grafana 04→05 (opt-in)
 │   ├── run-fleet-pipeline.yml        # Trigger: manual (workflow_dispatch) — pick a scenario (mock/real) & run it
 │   ├── destroy-infrastructure.yml    # Trigger: manual (workflow_dispatch) — teardown 03→02→01 (cumulative scope + confirm)
 │   ├── terraform-plan-pr.yml         # Trigger: pull_request — plan all 3 layers, post sticky comments
@@ -356,13 +358,22 @@ with `SELECT` on `fleet_dev.operations` **and** `fleet_dev.metadata` (the `pipel
 and **not** in `fleet_safety_officers` — so Grafana sees risk scores / drift / counts / coarse
 location but **raw biometrics stay masked** (to show them, add the SPN to `fleet_safety_officers`).
 
-**Deploy / tear down (standalone from the 01→02→03 stack):**
+**Deploy / tear down.** From **CI** the Grafana layers ride along with the rest: the
+[Deploy Infrastructure & Pipeline](.github/workflows/deploy-fleet-pipeline.yml) workflow applies
+04 → 05 in a job of its own (tick `deploy_grafana`, the default), authenticated by the
+`GRAFANA_ADMIN_USER_ID` secret — leave the secret unset and the job warns and skips, so Grafana
+stays feature-gated exactly like Slack/PagerDuty. It runs **beside** the bundle deploy, never
+before it: Grafana only serves the Gold layer, so an AMG failure must not block the pipeline.
+[Destroy](.github/workflows/destroy-infrastructure.yml) tears them down **first** (scope
+*"Everything incl. Grafana"*), since 04/05 sit on top of 01/02/03.
+
+Locally, they are still standalone (04+05 need 01/02/03 already applied):
 
 ```bash
 export TF_VAR_grafana_admin_user_id=<your IAM Identity Center user id>  # ADMIN login grant
 ./terraform.sh 04_grafana apply          # workspace + service-account token + Infinity plugin install
 ./terraform.sh 05_grafana_content apply  # Infinity datasource + the pipeline-observability dashboard
-# ... or `make grafana-up`  /  `make grafana-down` (reverse order). 04+05 need 01/02/03 already applied.
+# ... or `make grafana-up`  /  `make grafana-down` (reverse order).
 ```
 
 Layer 05 authenticates the `grafana` provider with the **ADMIN service-account token** layer 04
