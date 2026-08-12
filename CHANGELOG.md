@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`SECURITY.md`** — scope, reporting, the hardened controls, and nine known limitations, each
+  paired with the control a real deployment would use instead. Includes the two caveats that matter
+  most on the Art. 9 claim: the deployer role's trust policy is not in this repository, and Unity
+  Catalog masks protect the query path but not direct S3 access to the metastore bucket.
+
+### Changed
+- **README rewritten to the portfolio README standard.** No screenshot was removed — every image
+  was moved beside the claim it proves, natural pairs became two-column tables (five of them, from
+  none), and each of the 18 now carries a visible caption. Added `Status`, `Testing`, `What this
+  does not do`, `Cost`, `Decisions`, `Docs`, `Security` and `License`; removed the emoji headings,
+  the `Conclusion` and the `Future Roadmap` (the latter belongs in `docs/SCALING.md`, where it
+  already lives).
+
+### Added
 - **Genuine extreme-heart-rate incidents in the watch generator** (~10% of readings, 111–155 bpm): a real elevated-but-plausible heart rate that survives Silver cleansing (the `>220` outlier filter) and trips `DANGER: Extreme Heart Rate` (heart_rate > 110) — and, when it coincides with an overspeed tracker event, `CRITICAL: High Speed & Stress`. Previously valid heart rates capped at 95 bpm, so those two critical alert types (and therefore the PagerDuty escalation, which pages only on `critical`) could never fire on real pipeline data — a dead alert path. New branch + rate/branch tests (163 tests).
 - **Grafana dashboards as code, over the OSS Infinity datasource** (`terraform/05_grafana_content/`, ADR-010): two dashboards provisioned entirely in Terraform via the `grafana` provider — **no manual UI setup**. (1) *Pipeline Observability* (9 panels — stat / barchart / bargauge / timeseries / table over `pipeline_metrics`: join match rate, quarantine count, risk-score PSI/drift, band distribution, sensor null rates, plus per-run trends). (2) *Fleet Operations* (8 panels over the Gold `operations` tables — a **Geomap** of the 10 trucks coloured by risk score, a per-driver risk leaderboard, alerts-by-type, and a risk primary-factor breakdown); truck coordinates render at the **masked/coarse** resolution the BI SPN sees, so even the ops map honours the GDPR location mask. The official Databricks datasource plugin is Enterprise-only (+$45/active user/mo on AMG), so instead the free **Infinity** plugin POSTs SQL to the Databricks **SQL Statement Execution REST API** authenticated with **OAuth2 machine-to-machine** using the read-only BI SPN — so the dashboards respect the UC column masks by construction (no Art. 9 biometrics leave the platform). Layer 04 now also sets `pluginAdminEnabled`, mints an ADMIN **service-account token**, and installs the Infinity plugin via the Grafana HTTP API; layer 05 reads that token from remote state (avoiding the provider-bootstrap problem). Queries use Infinity's **backend** parser (server-side, so they also work for alerting; the frontend UQL parser does not). `data_analysts` were granted `USE_SCHEMA + SELECT` on `fleet_dev.metadata` so the BI SPN can read the metrics fact. `make grafana-up` / `grafana-down` wrap the two layers.
 - **Amazon Managed Grafana via Terraform** (`terraform/04_grafana/` + `modules/aws_grafana/`): a standalone layer that provisions an AMG workspace (IAM Identity Center auth, a customer-managed workspace IAM role, and an SSO ADMIN role association) for operational monitoring of the `pipeline_metrics` fact over the Databricks SQL Warehouse. Isolated remote state so it can be created for a demo and torn down independently.
