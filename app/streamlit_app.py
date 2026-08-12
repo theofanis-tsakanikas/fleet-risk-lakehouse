@@ -297,7 +297,7 @@ with tab_cmd:
             }
             st.pydeck_chart(pdk.Deck(
                 layers=[layer], initial_view_state=view,
-                map_style="mapbox://styles/mapbox/dark-v10", tooltip=tooltip,
+                map_provider="carto", map_style=pdk.map_styles.CARTO_DARK, tooltip=tooltip,
             ))
         else:
             st.info("No geolocation columns available in this data source.")
