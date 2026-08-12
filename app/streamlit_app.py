@@ -39,10 +39,22 @@ st.set_page_config(
     layout="wide",
 )
 
+# Promote only the keys the live-mode reader actually needs. Copying every entry of
+# st.secrets into os.environ would put whatever else the file happens to hold into
+# the environment of every subprocess this app spawns — an unnecessary blast radius
+# for a convenience shim.
+_SECRET_KEYS = (
+    "DATABRICKS_SERVER_HOSTNAME",
+    "DATABRICKS_HTTP_PATH",
+    "DATABRICKS_TOKEN",
+    "GOLD_CATALOG",
+    "GOLD_SCHEMA",
+)
+
 try:
-    for _k, _v in st.secrets.items():
-        if not os.getenv(_k):
-            os.environ[_k] = str(_v)
+    for _k in _SECRET_KEYS:
+        if not os.getenv(_k) and _k in st.secrets:
+            os.environ[_k] = str(st.secrets[_k])
 except Exception:
     pass
 

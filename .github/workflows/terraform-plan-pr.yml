@@ -23,6 +23,39 @@ permissions:
 
 jobs:
   # ============================================================================
+  # JOB 0: Can we reach the cloud at all?
+  # The estate is deployed and destroyed on demand, so its resting state is "gone"
+  # — and with it the deployer role. Without this gate every plan job failed at
+  # the assume-role step, turning every pull request red for a condition that is
+  # normal and expected. A skipped job is honest; a red one nobody reads is not.
+  # ============================================================================
+  preflight:
+    name: "Preflight: is the estate up?"
+    runs-on: ubuntu-latest
+    # The only fork guard needed: everything else depends on this job, so a fork PR
+    # skips the whole workflow rather than producing misleading empty plans.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    outputs:
+      cloud: ${{ steps.probe.outputs.cloud }}
+    steps:
+      - name: "Try to assume the deployer role"
+        id: creds
+        continue-on-error: true
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_DEFAULT_REGION }}
+
+      - name: "Report"
+        id: probe
+        run: |
+          if [ "${{ steps.creds.outcome }}" = "success" ]; then
+            echo "cloud=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "cloud=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Terraform plan skipped::The deployer role could not be assumed, so there is no estate to plan against — the expected state while the platform is torn down. Terraform formatting and validation still ran in the Lint + Local Tests job (tests/test_infra_offline.py). Re-run this workflow after a deploy to get real plans."
+          fi
+  # ============================================================================
   # JOB 1: Plan 01_infra
   # Outputs the Secrets Manager ARN so jobs 2 and 3 can inject SPN credentials
   # without re-initializing layer 01.
@@ -30,7 +63,8 @@ jobs:
   plan-01-infra:
     name: "Plan: 01_infra"
     runs-on: ubuntu-latest
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    needs: preflight
+    if: needs.preflight.outputs.cloud == 'true'
 
     outputs:
       secrets_manager_id: ${{ steps.tf-outputs.outputs.secrets_manager_id }}
@@ -116,9 +150,9 @@ jobs:
   # ============================================================================
   plan-02-workspace:
     name: "Plan: 02_workspace"
-    needs: plan-01-infra
+    needs: [preflight, plan-01-infra]
     runs-on: ubuntu-latest
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: needs.preflight.outputs.cloud == 'true'
 
     env:
       AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
@@ -211,9 +245,9 @@ jobs:
   # ============================================================================
   plan-03-unity-catalog:
     name: "Plan: 03_unity_catalog"
-    needs: [plan-01-infra, plan-02-workspace]
+    needs: [preflight, plan-01-infra, plan-02-workspace]
     runs-on: ubuntu-latest
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: needs.preflight.outputs.cloud == 'true'
 
     env:
       AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}

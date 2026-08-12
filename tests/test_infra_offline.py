@@ -64,6 +64,61 @@ def test_terraform_validate(layer, terraform_tree):
     assert result.returncode == 0, f"terraform validate failed in {layer}:\n{result.stdout}{result.stderr}"
 
 
+# --------------------------------------------------------------------------- #
+# Storage hardening — asserted on the source, so it needs no cloud and no plan
+# --------------------------------------------------------------------------- #
+
+_FOUNDATION = _ROOT / "terraform" / "modules" / "aws_foundation" / "main.tf"
+
+# Both buckets hold data that cannot be regenerated: the landing zone is read once
+# by Auto Loader, and the metastore root is where every managed Delta table lives.
+_BUCKETS = ["data_bucket", "metastore_bucket"]
+
+_REQUIRED_CONTROLS = [
+    ("aws_s3_bucket_public_access_block", "a public-access block"),
+    ("aws_s3_bucket_server_side_encryption_configuration", "server-side encryption"),
+    ("aws_s3_bucket_versioning", "versioning"),
+]
+
+
+@pytest.mark.parametrize("bucket", _BUCKETS)
+@pytest.mark.parametrize("resource_type,description", _REQUIRED_CONTROLS)
+def test_bucket_carries_its_baseline_controls(bucket, resource_type, description):
+    """Each S3 bucket must declare all three controls, by name, in the module.
+
+    Deleting one of these is a single-line change that no other test would notice —
+    `terraform validate` is perfectly happy with an unencrypted, unversioned, public
+    bucket. This asserts on the source text precisely because there is nothing to
+    plan against while the estate is torn down.
+    """
+    source = _FOUNDATION.read_text()
+    needle = f'resource "{resource_type}" "{bucket}"'
+    assert (
+        needle in source
+    ), f"{bucket} no longer declares {description} — expected {needle} in terraform/modules/aws_foundation/main.tf"
+
+
+def test_versioned_buckets_expire_their_noncurrent_versions():
+    """Versioning without expiry turns a safety net into an unbounded bill."""
+    source = _FOUNDATION.read_text()
+    versioned = source.count('resource "aws_s3_bucket_versioning"')
+    expiring = source.count("noncurrent_version_expiration")
+    assert expiring >= versioned, (
+        f"{versioned} bucket(s) have versioning enabled but only {expiring} lifecycle "
+        f"rule(s) expire non-current versions."
+    )
+
+
+def test_prod_keeps_a_recovery_window_on_the_secret():
+    """`recovery_window_in_days = 0` is a dev convenience; in prod it destroys the SPN."""
+    source = _FOUNDATION.read_text()
+    assert 'recovery_window_in_days = var.environment == "prod" ? 30 : 0' in source, (
+        "The Secrets Manager recovery window is no longer environment-gated. A flat 0 "
+        "means an accidental prod destroy takes the SPN credentials with it, "
+        "unrecoverably."
+    )
+
+
 @pytest.mark.skipif(shutil.which("databricks") is None, reason="databricks CLI not installed")
 def test_databricks_bundle_validate():
     result = _run(["databricks", "bundle", "validate", "-t", "dev"], _ROOT)
