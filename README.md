@@ -435,34 +435,35 @@ Catalog enforces them is the screenshot above, from a real run, not an assertion
 
 ## Cost
 
-**Nothing is standing today.** The platform is deployed on demand and torn down; what follows is what
-it would cost *while it stands* — list-price estimates for `eu-central-1`, not a measured bill.
+**Nothing is standing today.** The platform is deployed on demand and torn down. What follows is what
+it would cost *while it stands* — list prices for `eu-central-1`, **verified 2026-08-12**.
 
 | Resource | Spec | Rate | Monthly |
 |---|---|---|---:|
-| Databricks SQL warehouse | serverless PRO, **2X-Small** (4 DBU/hr), auto-stop 10 min, max 2 clusters | $0.70/DBU | ~$56 |
-| Databricks jobs | serverless, 2 jobs × 8 tasks, ~20 runs/mo × ~5 min | $0.70/DBU | ~$25 |
-| Amazon Managed Grafana | 1 workspace, 1 editor — **the only per-user standing charge** | $9/editor-mo | $9.00 |
+| Databricks SQL warehouse | serverless PRO **2X-Small** (4 DBU/hr), auto-stop 10 min, ~20 hr/mo | **$0.91/DBU (EU)** | **$72.80** |
+| Databricks jobs | serverless, 2 jobs × 8 tasks, ~20 runs/mo × ~5 min | **$0.91/DBU (EU)** | ~$32.50 |
+| Amazon Managed Grafana | 1 workspace, 1 active editor | $9/editor-mo | $9.00 |
 | S3 — data lake | landing zone + managed Delta, versioned, non-current expiry 30 d | $0.023/GB-mo | ~$0.50 |
 | S3 — metastore root | Unity Catalog managed tables | $0.023/GB-mo | ~$0.25 |
 | Secrets Manager | 1 secret | $0.40/secret-mo | $0.40 |
 | Metastore, workspace, UC objects, IAM | control plane only | free | $0.00 |
-| **Total** | | | **≈ $91 / month** |
+| **Total** | | | **≈ $115 / month** |
 
 **The auto-stop is the entire cost control, and the arithmetic shows why.** The warehouse draws
-4 DBU/hr × $0.70 = **$2.80/hour**. At ~20 hours of genuine query time a month it costs ~$56; left
-running 10 hours a day it would cost **~$616**. The 20–30 second cold start on the first Grafana query
+4 DBU/hr × $0.91 = **$3.64/hour**. At ~20 hours of genuine query time a month it costs $72.80; left
+running 10 hours a day it would cost **~$800**. The 20–30 second cold start on the first Grafana query
 after an idle period is what that saving is bought with.
 
 There is no always-on compute anywhere else by design: Spark job compute is serverless and released
 the moment a run finishes, which is the real argument for the micro-batch decision
 ([ADR-004](./docs/adr/ADR-004-micro-batch-execution.md)) rather than just its simplicity.
 
-**Levers:** `make grafana-down` removes the $9 — which is why layers 04/05 are standalone and
-feature-gated. `make infra-down` returns the rest to zero, with the documented two-pass metastore
-caveat above.
+**Levers:** `make grafana-down` removes the $9 — the only charge that bills per user regardless of
+use, and the reason layers 04/05 are standalone and feature-gated. `make infra-down` returns the rest
+to zero, with the documented two-pass metastore caveat.
 
-*Rates are list prices and change; verify before quoting.*
+*Databricks serverless SQL lists at $0.70/DBU in US regions and **$0.91/DBU in the EU**; this estate is
+`eu-central-1`, so the EU rate applies. Rates verified 2026-08-12; verify before quoting.*
 
 ---
 
