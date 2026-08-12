@@ -435,20 +435,34 @@ Catalog enforces them is the screenshot above, from a real run, not an assertion
 
 ## Cost
 
-**No always-on compute exists in this design, and that is the main cost control.** Spark job compute
-is released the moment a run finishes — which is the real argument for the micro-batch decision, not
-just its simplicity. The serverless SQL Warehouse **auto-stops after 10 minutes** idle, so between
-demos it bills nothing; the price is a 20–30 second cold start on the first Grafana query
-afterwards.
+**Nothing is standing today.** The platform is deployed on demand and torn down; what follows is what
+it would cost *while it stands* — list-price estimates for `eu-central-1`, not a measured bill.
 
-What remains while the estate stands: the S3 buckets (small, with a 7-day lifecycle on `temp/` and a
-30-day expiry on non-current versions), one Secrets Manager secret, and — the only component that is
-**not** purely on-demand — the Amazon Managed Grafana workspace, which bills per active user per
-month regardless of use. That is why layers 04 and 05 are standalone and feature-gated: `make
-grafana-down` removes them without touching the pipeline.
+| Resource | Spec | Rate | Monthly |
+|---|---|---|---:|
+| Databricks SQL warehouse | serverless PRO, **2X-Small** (4 DBU/hr), auto-stop 10 min, max 2 clusters | $0.70/DBU | ~$56 |
+| Databricks jobs | serverless, 2 jobs × 8 tasks, ~20 runs/mo × ~5 min | $0.70/DBU | ~$25 |
+| Amazon Managed Grafana | 1 workspace, 1 editor — **the only per-user standing charge** | $9/editor-mo | $9.00 |
+| S3 — data lake | landing zone + managed Delta, versioned, non-current expiry 30 d | $0.023/GB-mo | ~$0.50 |
+| S3 — metastore root | Unity Catalog managed tables | $0.023/GB-mo | ~$0.25 |
+| Secrets Manager | 1 secret | $0.40/secret-mo | $0.40 |
+| Metastore, workspace, UC objects, IAM | control plane only | free | $0.00 |
+| **Total** | | | **≈ $91 / month** |
 
-`make infra-down` returns the rest to zero, with the documented metastore caveat above. Order-of-
-magnitude wall-clock figures per stage are in [docs/RUNBOOK.md](docs/RUNBOOK.md); measure your own.
+**The auto-stop is the entire cost control, and the arithmetic shows why.** The warehouse draws
+4 DBU/hr × $0.70 = **$2.80/hour**. At ~20 hours of genuine query time a month it costs ~$56; left
+running 10 hours a day it would cost **~$616**. The 20–30 second cold start on the first Grafana query
+after an idle period is what that saving is bought with.
+
+There is no always-on compute anywhere else by design: Spark job compute is serverless and released
+the moment a run finishes, which is the real argument for the micro-batch decision
+([ADR-004](./docs/adr/ADR-004-micro-batch-execution.md)) rather than just its simplicity.
+
+**Levers:** `make grafana-down` removes the $9 — which is why layers 04/05 are standalone and
+feature-gated. `make infra-down` returns the rest to zero, with the documented two-pass metastore
+caveat above.
+
+*Rates are list prices and change; verify before quoting.*
 
 ---
 
