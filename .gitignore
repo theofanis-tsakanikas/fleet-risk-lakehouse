@@ -86,3 +86,6 @@ promo/
 
 # Un-masked AWS console screenshots — local backup only (masked copies are committed)
 images/new/aws/*_original.png
+
+# Streamlit live-mode credentials (local only)
+app/.streamlit/secrets.toml
