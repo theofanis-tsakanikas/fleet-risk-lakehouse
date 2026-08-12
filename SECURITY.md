@@ -104,8 +104,9 @@ cannot corrupt layer 01's state, and concurrent plans on different layers do not
 
 `.env`, `*.tfstate`, `*.tfvars`, `.terraform/` and `app/.streamlit/secrets.toml` are gitignored, and
 [`gitleaks`](.github/workflows/gitleaks.yml) scans the **full git history** (`fetch-depth: 0`) on
-every push and pull request. The Streamlit app promotes only an explicit allowlist of five keys from
-`st.secrets` into the process environment, rather than the whole file.
+every push and pull request. A real `app/.streamlit/secrets.toml` exists on the
+development machine and is untracked — the ignore rule covering it is committed, so it is protected
+by rule rather than by luck.
 
 ---
 
@@ -166,11 +167,17 @@ configured. Today the environment provides scoping, not a second pair of eyes.
 Layer 05 authenticates with a **30-day** service-account token emitted by layer 04. Rotation means
 re-applying 04 and then 05, by hand. There is no automatic rotation and no alert before expiry.
 
-### 7. The Streamlit app has no authentication
+### 7. The Streamlit app has no authentication, and promotes every secret to the environment
 
 [`app/`](app/) is a demo surface. Anyone who can reach the port reads whatever the configured
-principal can read — which is exactly why the principal it is given matters, and why the live mode
-should be pointed at the unprivileged BI service principal rather than an admin token.
+principal can read — which is exactly why the principal it is given matters, and why live mode
+should point at the unprivileged BI service principal rather than an admin token.
+
+It also copies **every** entry of `st.secrets` into `os.environ` at start-up, so whatever else that
+file happens to hold becomes visible to any subprocess. Promoting only the five keys the data layer
+reads would narrow that, and is the right change in a codebase under active development — it is not
+applied here because the app is deployed and working, and the fix would silently stop promoting a
+key someone's local secrets file relies on.
 
 ### 8. No dependency or container vulnerability scanning
 

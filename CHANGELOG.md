@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Catalog masks protect the query path but not direct S3 access to the metastore bucket.
 
 ### Changed
+- **The Streamlit secrets promotion was narrowed to a five-key allowlist and then reverted.** The
+  app is deployed and working, and an allowlist silently stops promoting any key a local secrets
+  file happens to rely on. It is documented as limitation 7 in `SECURITY.md` instead.
 - **README rewritten to the portfolio README standard.** No screenshot was removed — every image
   was moved beside the claim it proves, natural pairs became two-column tables (five of them, from
   none), and each of the 18 now carries a visible caption. Added `Status`, `Testing`, `What this
