@@ -30,9 +30,9 @@ def test_terraform_fmt_check_whole_tree():
     # .terraform-version and kept fmt-clean. -recursive descends into modules/.
     tf_dir = _ROOT / "terraform"
     result = _run(["terraform", "fmt", "-check", "-recursive"], tf_dir)
-    assert result.returncode == 0, (
-        f"terraform fmt drift (run `terraform fmt -recursive terraform/`):\n{result.stdout}{result.stderr}"
-    )
+    assert (
+        result.returncode == 0
+    ), f"terraform fmt drift (run `terraform fmt -recursive terraform/`):\n{result.stdout}{result.stderr}"
 
 
 @pytest.fixture(scope="session")
@@ -93,9 +93,9 @@ def test_bucket_carries_its_baseline_controls(bucket, resource_type, description
     """
     source = _FOUNDATION.read_text()
     needle = f'resource "{resource_type}" "{bucket}"'
-    assert needle in source, (
-        f"{bucket} no longer declares {description} — expected {needle} in terraform/modules/aws_foundation/main.tf"
-    )
+    assert (
+        needle in source
+    ), f"{bucket} no longer declares {description} — expected {needle} in terraform/modules/aws_foundation/main.tf"
 
 
 def test_versioned_buckets_expire_their_noncurrent_versions():
