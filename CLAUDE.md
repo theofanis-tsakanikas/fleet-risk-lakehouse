@@ -67,6 +67,15 @@ These must exist **before** the Quick Start — Terraform does not bootstrap the
 - **Grafana:** a Grafana instance with the Databricks datasource plugin pointed at the
   `serverless_bi-dev` SQL Warehouse (catalog `fleet_dev`, schema `operations`).
 
+> **Check the bootstrap before you deploy.** The **Bootstrap Check (read-only preflight)**
+> workflow ([bootstrap-check.yml](.github/workflows/bootstrap-check.yml)) verifies every item
+> above that CI can see — the OIDC role, the Terraform state bucket, that the Account-Admin SPN
+> authenticates, that the `fleet_safety_officers` group exists (with an opt-in input to create it
+> and add a member), and whether Grafana is wired. It creates nothing else and costs nothing, so
+> run it before a deploy or after a teardown; without it a missing prerequisite surfaces late and
+> cryptically (an empty `TF_VAR`, a data source that finds no group, an `init` that cannot reach
+> its backend).
+
 ---
 
 ## Make targets (the front door)
@@ -106,6 +115,7 @@ and `make check` reproduces CI locally. The Makefile defaults `PYTHON` to `.venv
 │   ├── run-fleet-pipeline.yml        # Trigger: manual (workflow_dispatch) — pick a scenario (mock/real) & run it
 │   ├── destroy-infrastructure.yml    # Trigger: manual (workflow_dispatch) — teardown 03→02→01 (cumulative scope + confirm)
 │   ├── terraform-plan-pr.yml         # Trigger: pull_request — plan all 3 layers, post sticky comments
+│   ├── bootstrap-check.yml           # Trigger: manual (workflow_dispatch) — READ-ONLY preflight: state bucket, admin SPN, mask group (opt. create), Grafana secret
 │   └── gitleaks.yml                  # Trigger: PR + push — secret scan over full git history
 ├── notebooks/
 │   ├── bronze/                        # Auto Loader ingestion (cloudFiles, CSV/JSON → Delta)

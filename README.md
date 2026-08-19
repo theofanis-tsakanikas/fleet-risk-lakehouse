@@ -113,12 +113,12 @@ SQL**, from the raw volumes through to the Gold tables:
 
 <sub><b>Lineage, captured not authored</b> — nobody drew this. Unity Catalog followed the transformations, which is also what makes the masking claim below verifiable rather than asserted.</sub>
 
-The three domain catalogs and the two masking **functions** that enforce Art. 9 live in Unity
+The three domain catalogs and the three masking **functions** that enforce Art. 9 live in Unity
 Catalog itself:
 
 ![Unity Catalog — three domain catalogs + mask functions](./images/new/databricks/dbx_catalog.png)
 
-<sub><b>Governance as objects, not documents</b> — <code>mask_biometric</code> and <code>mask_location</code> are Unity Catalog functions, bound to columns. There is no application layer that can be bypassed by querying the table directly.</sub>
+<sub><b>Governance as objects, not documents</b> — <code>mask_biometric</code>, <code>mask_biometric_double</code> and <code>mask_location</code> are Unity Catalog functions, bound to columns. Two policies, three functions: a mask's parameter type must match the column exactly, so the <code>DOUBLE</code> aggregates need their own variant. There is no application layer that can be bypassed by querying the table directly.</sub>
 
 **The stack, in one list:** AWS (S3, Secrets Manager, IAM, Amazon Managed Grafana) · Databricks
 Unity Catalog for governance and fine-grained access control · Apache Spark Structured Streaming
@@ -163,7 +163,8 @@ reprocessing after a restart:
 
 ### Silver — clean, don't destroy
 
-Type casting, deduplication on `(device_id, event_timestamp)`, and one rule that decides the
+Type casting, deduplication on each stream's device key (`(tracker_id, event_timestamp)` /
+`(watch_id, event_timestamp)`), and one rule that decides the
 character of the whole layer: **drop a row only when it is unrecoverable** (ghost driver `DRV_999`,
 malformed IDs) — otherwise *null the individual bad reading* (GPS `(0,0)`, speed `-1`/`999`, heart
 rate `-999`/`0`/`>220`) and keep the row. **Never fabricate a value.**
@@ -266,7 +267,7 @@ in the sidebar, no code change.
 <table>
 <tr>
 <td width="50%"><img src="./images/new/streamlit/fleet_live.png" alt="Streamlit — Fleet Safety Command Center, live on Databricks SQL"><br><sub><b>Live on Databricks SQL</b> — the header badge flips to <b>● LIVE · DATABRICKS SQL</b>, and the KPIs, the risk-coloured fleet map and the driver leaderboard all read the real Gold tables.</sub></td>
-<td width="50%"><img src="./images/new/streamlit/driver_drill_down.png" alt="Streamlit — driver drill-down: speed × heart rate × risk on one timeline"><br><sub><b>The thesis, visible</b> — speed, heart rate and the resulting risk on one ±60-second timeline. Either signal alone would miss the moment the correlation catches.</sub></td>
+<td width="50%"><img src="./images/new/streamlit/driver_drill_down.png" alt="Streamlit — driver drill-down: speed × heart rate × risk on one timeline"><br><sub><b>The thesis, visible</b> — speed, heart rate and the resulting risk on one shared timeline, built from the ±60-second temporal join. Either signal alone would miss the moment the correlation catches.</sub></td>
 </tr>
 </table>
 
@@ -451,7 +452,7 @@ it would cost *while it stands* — list prices for `eu-central-1`, **verified 2
 
 **The auto-stop is the entire cost control, and the arithmetic shows why.** The warehouse draws
 4 DBU/hr × $0.91 = **$3.64/hour**. At ~20 hours of genuine query time a month it costs $72.80; left
-running 10 hours a day it would cost **~$800**. The 20–30 second cold start on the first Grafana query
+running 10 hours a day on business days it would cost **~$800** (and ~$1,090 if left up every day). The 20–30 second cold start on the first Grafana query
 after an idle period is what that saving is bought with.
 
 There is no always-on compute anywhere else by design: Spark job compute is serverless and released
@@ -475,8 +476,10 @@ Ten records in [`docs/adr/`](docs/adr/) — what was chosen and, more usefully, 
 |---|---|
 | [ADR-001](./docs/adr/ADR-001-terraform-layered-state.md) | Five Terraform layers with isolated state, over one monolithic state file |
 | [ADR-002](./docs/adr/ADR-002-temporal-join-window.md) | A ±60-second temporal join to correlate two independent, asynchronous streams |
+| [ADR-003](./docs/adr/ADR-003-sql-warehouse-grafana.md) | A serverless SQL Warehouse as the BI query backend, over an always-on all-purpose cluster |
 | [ADR-004](./docs/adr/ADR-004-micro-batch-execution.md) | Micro-batch recompute over continuous streaming — and exactly what would change if that flipped |
 | [ADR-005](./docs/adr/ADR-005-declarative-data-quality.md) | A tiny declarative expectation framework with quarantine, over Great Expectations or a crash-on-bad-row |
+| [ADR-006](./docs/adr/ADR-006-scd2-driver-dimension.md) | An SCD Type 2 driver dimension, so a reassignment cannot erase who was driving what, when |
 | [ADR-007](./docs/adr/ADR-007-column-masking.md) | Unity Catalog column masks on all four Gold surfaces, because aggregation does not de-identify |
 | [ADR-008](./docs/adr/ADR-008-real-data-replay.md) | Real vehicle telemetry replayed through the identical contract, with biometrics conditioned on real events |
 | [ADR-009](./docs/adr/ADR-009-alert-notifications.md) | Alerts pushed from the pipeline on an allowlist, over Grafana polling |
